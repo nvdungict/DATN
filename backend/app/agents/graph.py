@@ -1,3 +1,14 @@
+"""
+Main agent entry point — Supervisor Graph.
+
+Architecture:
+    understand → supervisor → [planning | info | booking]
+
+Intents:
+    CREATE_TRIP / MODIFY_TRIP  → Planning Agent (subgraph)
+    ASK_INFO                   → Info Agent (subgraph)
+    SEARCH_FLIGHT / SEARCH_HOTEL → Booking Agent (subgraph)
+"""
 import functools
 from typing import AsyncGenerator
 
@@ -6,76 +17,49 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.agents.state import AgentState
 from app.agents.nodes.understand import understand_node
-from app.agents.nodes.decision import decision_node, route_after_decision
-from app.agents.nodes.retrieve import retrieve_node
-from app.agents.nodes.search import search_node
-from app.agents.nodes.plan import plan_node
-from app.agents.nodes.constraint import constraint_node
-from app.agents.nodes.finalize import finalize_node
-from app.agents.nodes.answer import answer_node
+from app.agents.subgraphs.supervisor import supervisor_node, route_after_supervisor
+from app.agents.subgraphs.planning import build_planning_graph
+from app.agents.subgraphs.info import build_info_graph
+from app.agents.subgraphs.booking import build_booking_graph
 
+
+# ---------------------------------------------------------------------------
+# Build graph
+# ---------------------------------------------------------------------------
 
 def build_graph(session: AsyncSession) -> StateGraph:
-    """Build the LangGraph StateGraph, binding session-dependent nodes."""
-
-    # Bind session to nodes that need DB access
-    _retrieve = functools.partial(retrieve_node, session=session)
-    _finalize = functools.partial(finalize_node, session=session)
+    """Build the Supervisor graph with specialized agent subgraphs."""
+    planning = build_planning_graph(session).compile()
+    info = build_info_graph(session).compile()
+    booking = build_booking_graph().compile()
 
     graph = StateGraph(AgentState)
 
     graph.add_node("understand", understand_node)
-    graph.add_node("decision", decision_node)
-    graph.add_node("retrieve", _retrieve)
-    graph.add_node("search", search_node)
-    graph.add_node("answer", answer_node)   # ASK_INFO shortcut node
-    graph.add_node("plan", plan_node)
-    graph.add_node("constraint", constraint_node)
-    graph.add_node("finalize", _finalize)
+    graph.add_node("supervisor", supervisor_node)
+    graph.add_node("planning", planning)
+    graph.add_node("info", info)
+    graph.add_node("booking", booking)
 
-    # Entry
     graph.set_entry_point("understand")
-
-    # understand → decision
-    graph.add_edge("understand", "decision")
-
-    # decision → conditional branch
-    graph.add_conditional_edges(
-        "decision",
-        route_after_decision,
-        {
-            "plan": "search",        # CREATE: search first then plan
-            "retrieve": "retrieve",  # MODIFY: retrieve then plan
-            "search": "search",      # ASK_INFO: search only
-        },
-    )
-
-    # retrieve → plan (for MODIFY_TRIP)
-    graph.add_edge("retrieve", "plan")
-
-    # search → conditional: ASK_INFO shortcut skips plan + constraint
-    def route_after_search(state: AgentState) -> str:
-        """ASK_INFO → answer (skip plan+constraint). Others → plan."""
-        return "answer" if state.get("intent") == "ASK_INFO" else "plan"
+    graph.add_edge("understand", "supervisor")
 
     graph.add_conditional_edges(
-        "search",
-        route_after_search,
-        {"answer": "answer", "plan": "plan"},
+        "supervisor",
+        route_after_supervisor,
+        {"planning": "planning", "info": "info", "booking": "booking"},
     )
 
-    # answer → finalize (ASK_INFO fast path, bypass constraint)
-    graph.add_edge("answer", "finalize")
-
-    # plan → constraint → finalize
-    graph.add_edge("plan", "constraint")
-    graph.add_edge("constraint", "finalize")
-
-    # finalize → END
-    graph.add_edge("finalize", END)
+    graph.add_edge("planning", END)
+    graph.add_edge("info", END)
+    graph.add_edge("booking", END)
 
     return graph
 
+
+# ---------------------------------------------------------------------------
+# Run helpers (signatures unchanged — frontend/WebSocket not affected)
+# ---------------------------------------------------------------------------
 
 async def run_agent(
     user_message: str,
@@ -83,26 +67,11 @@ async def run_agent(
     session: AsyncSession,
     trip_id: int | None = None,
 ) -> dict:
-    """Run the agent graph synchronously and return the final state."""
+    """Run the agent graph and return the final state."""
     graph = build_graph(session)
     compiled = graph.compile()
 
-    initial_state: AgentState = {
-        "user_message": user_message,
-        "user_id": user_id,
-        "trip_id": trip_id,
-        "intent": "",
-        "entities": {},
-        "existing_trip": None,
-        "memory_context": [],
-        "search_results": [],
-        "trip_data": None,
-        "itinerary_items": [],
-        "conflicts": [],
-        "messages": [],
-        "next_node": "",
-    }
-
+    initial_state: AgentState = _make_initial_state(user_message, user_id, trip_id)
     final_state = await compiled.ainvoke(initial_state)
 
     return {
@@ -111,6 +80,7 @@ async def run_agent(
         "itinerary_items": final_state.get("itinerary_items", []),
         "conflicts": final_state.get("conflicts", []),
         "messages": final_state.get("messages", []),
+        "booking_results": final_state.get("booking_results", []),
     }
 
 
@@ -124,7 +94,55 @@ async def run_agent_streaming(
     graph = build_graph(session)
     compiled = graph.compile()
 
-    initial_state: AgentState = {
+    initial_state: AgentState = _make_initial_state(user_message, user_id, trip_id)
+
+    FINALIZE_NODES = {"planning", "info", "booking"}
+
+    async for event in compiled.astream(initial_state):
+        for node_name, node_output in event.items():
+            if node_name == "understand":
+                yield {
+                    "type": "token",
+                    "content": "🔍 Understanding your request...",
+                    "metadata": {"node": "understand"},
+                }
+            elif node_name == "supervisor":
+                agent_type = node_output.get("agent_type")
+                if agent_type == "planning":
+                    yield {
+                        "type": "token",
+                        "content": "📅 Creating your personalized itinerary...",
+                        "metadata": {"node": "planning"},
+                    }
+                elif agent_type == "booking":
+                    yield {
+                        "type": "token",
+                        "content": "✈️ Searching for available options...",
+                        "metadata": {"node": "booking"},
+                    }
+                elif agent_type == "info":
+                    yield {
+                        "type": "token",
+                        "content": "💬 Thinking about your question...",
+                        "metadata": {"node": "info"},
+                    }
+            elif node_name in FINALIZE_NODES:
+                messages = node_output.get("messages", [])
+                yield {
+                    "type": "final",
+                    "content": messages[0]["content"] if messages else "Done!",
+                    "metadata": {
+                        "action": node_output.get("intent"),
+                        "trip": node_output.get("trip_data"),
+                        "itinerary_items": node_output.get("itinerary_items", []),
+                        "conflicts": node_output.get("conflicts", []),
+                        "booking_results": node_output.get("booking_results", []),
+                    },
+                }
+
+
+def _make_initial_state(user_message: str, user_id: int, trip_id: int | None) -> AgentState:
+    return {
         "user_message": user_message,
         "user_id": user_id,
         "trip_id": trip_id,
@@ -138,45 +156,7 @@ async def run_agent_streaming(
         "conflicts": [],
         "messages": [],
         "next_node": "",
+        "agent_type": "",
+        "booking_params": {},
+        "booking_results": [],
     }
-
-    final_state = None
-    async for event in compiled.astream(initial_state):
-        for node_name, node_output in event.items():
-            if node_name == "understand":
-                yield {
-                    "type": "token",
-                    "content": f"🔍 Understanding your request...",
-                    "metadata": {"node": node_name},
-                }
-            elif node_name == "search":
-                yield {
-                    "type": "token",
-                    "content": f"🌐 Searching for places and activities...",
-                    "metadata": {"node": node_name},
-                }
-            elif node_name == "plan":
-                yield {
-                    "type": "token",
-                    "content": f"📅 Creating your personalized itinerary...",
-                    "metadata": {"node": node_name},
-                }
-            elif node_name == "answer":
-                yield {
-                    "type": "token",
-                    "content": "💬 Thinking about your question...",
-                    "metadata": {"node": node_name},
-                }
-            elif node_name == "finalize":
-                final_state = node_output
-                messages = node_output.get("messages", [])
-                yield {
-                    "type": "final",
-                    "content": messages[0]["content"] if messages else "Done!",
-                    "metadata": {
-                        "action": node_output.get("intent"),
-                        "trip": node_output.get("trip_data"),
-                        "itinerary_items": node_output.get("itinerary_items", []),
-                        "conflicts": node_output.get("conflicts", []),
-                    },
-                }

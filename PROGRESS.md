@@ -19,7 +19,7 @@
 |---|---|---|---|
 | F01 | Đăng ký tài khoản | ✅ | `POST /auth/register`, bcrypt hash |
 | F02 | Đăng nhập | ✅ | `POST /auth/token`, trả JWT |
-| F03 | Xem thông tin cá nhân | ✅ | `GET /auth/me` |
+| F03 | Xem thông tin cá nhân | ✅ | `GET /auth/me` · `PATCH /auth/me` · Trang `/profile` + avatar trên navbar |
 | F04 | Đăng xuất | ✅ | Frontend xoá token khỏi localStorage |
 
 ---

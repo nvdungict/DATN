@@ -39,6 +39,7 @@ class TripRead(TripBase):
     status: TripStatus
     created_at: datetime
     updated_at: datetime
+    user_role: Optional[str] = None
 
 
 class TripUpdate(SQLModel):
@@ -49,3 +50,21 @@ class TripUpdate(SQLModel):
     total_budget: Optional[float] = None
     currency: Optional[str] = None
     status: Optional[TripStatus] = None
+
+class TripCollaborator(SQLModel, table=True):
+    __tablename__ = "trip_collaborators"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    trip_id: int = Field(foreign_key="trips.id", index=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
+    role: str = Field(default="VIEWER") # OWNER, EDITOR, VIEWER
+    status: str = Field(default="PENDING") # PENDING, ACCEPTED, REJECTED
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class TripCollaboratorRead(SQLModel):
+    id: int
+    trip_id: int
+    user_id: int
+    role: str
+    status: str
+    created_at: datetime

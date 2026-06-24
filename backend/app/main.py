@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.core.database import create_db_and_tables
-from app.routes import auth, trips, itinerary, ai_chat
+from app.routes import auth, trips, itinerary, ai_chat, notifications, booking, payment
 
 settings = get_settings()
 
@@ -12,6 +12,8 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await create_db_and_tables()
+    from app.services.scheduler import start_scheduler
+    start_scheduler()
     yield
 
 
@@ -37,6 +39,9 @@ app.include_router(auth.router)
 app.include_router(trips.router)
 app.include_router(itinerary.router)
 app.include_router(ai_chat.router)
+app.include_router(notifications.router)
+app.include_router(booking.router)
+app.include_router(payment.router)
 
 
 @app.get("/health")

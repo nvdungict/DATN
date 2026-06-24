@@ -6,9 +6,12 @@ def decision_node(state: AgentState) -> AgentState:
     intent = state.get("intent", "ASK_INFO")
     trip_id = state.get("trip_id")
 
-    if intent == "CREATE_TRIP":
+    if intent == "CREATE_TRIP" and not trip_id:
         state["next_node"] = "plan"
     elif intent == "MODIFY_TRIP" or (intent == "CREATE_TRIP" and trip_id):
+        state["next_node"] = "retrieve"
+    elif intent == "ASK_INFO" and trip_id:
+        # Has trip context: retrieve trip data first, then search with enriched query
         state["next_node"] = "retrieve"
     elif intent == "ASK_INFO":
         state["next_node"] = "search"

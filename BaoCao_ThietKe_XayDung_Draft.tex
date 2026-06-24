@@ -1,0 +1,586 @@
+\documentclass[../DoAn.tex]{subfiles}
+\begin{document}
+
+\section{Thiết kế kiến trúc}
+
+\subsection{Lựa chọn kiến trúc phần mềm}
+
+Hệ thống AI Travel Assistant được thiết kế theo kiến trúc nhiều tầng kết hợp mô hình client--server. Ứng dụng bao gồm giao diện người dùng chạy trên trình duyệt, máy chủ API xử lý nghiệp vụ, tầng tác tử AI điều phối các bước lập kế hoạch du lịch và hệ quản trị cơ sở dữ liệu PostgreSQL dùng để lưu trữ dữ liệu người dùng, chuyến đi, lịch trình và bộ nhớ ngữ nghĩa.
+
+Kiến trúc nhiều tầng được lựa chọn vì phù hợp với đặc điểm của hệ thống. Ứng dụng có nhiều nhóm chức năng khác nhau như xác thực người dùng, quản lý chuyến đi, lập lịch trình bằng AI, chat thời gian thực, hiển thị bản đồ và lưu trữ vector memory. Nếu toàn bộ xử lý được đặt chung trong một khối, hệ thống sẽ khó bảo trì và khó mở rộng. Việc chia thành các tầng giúp tách biệt trách nhiệm giữa giao diện, API, nghiệp vụ, AI và dữ liệu.
+
+Trong hệ thống này, kiến trúc tổng thể gồm các tầng chính sau:
+
+\begin{itemize}
+    \item \textbf{Tầng trình bày}: được xây dựng bằng Next.js và React. Tầng này chịu trách nhiệm hiển thị giao diện, nhận thao tác từ người dùng, gọi REST API, mở kết nối WebSocket và biểu diễn dữ liệu chuyến đi dưới dạng timeline, bản đồ và cửa sổ chat.
+    \item \textbf{Tầng API}: được xây dựng bằng FastAPI. Tầng này cung cấp các endpoint cho xác thực, quản lý chuyến đi, quản lý lịch trình và chat AI. Đây là điểm trung gian giữa frontend và các thành phần nghiệp vụ phía sau.
+    \item \textbf{Tầng nghiệp vụ}: bao gồm các service như \texttt{TripService}, \texttt{MemoryService} và các xử lý xác thực. Tầng này đóng gói logic nghiệp vụ, tránh để route handler xử lý trực tiếp quá nhiều chi tiết.
+    \item \textbf{Tầng tác tử AI}: được xây dựng bằng LangGraph. Tác tử AI không chỉ gọi mô hình ngôn ngữ một lần mà tổ chức thành nhiều bước: hiểu yêu cầu, quyết định nhánh xử lý, tìm kiếm thông tin, sinh lịch trình, kiểm tra ràng buộc và lưu kết quả.
+    \item \textbf{Tầng dữ liệu}: sử dụng PostgreSQL kết hợp extension pgvector. PostgreSQL lưu dữ liệu quan hệ như người dùng, chuyến đi, lịch trình; pgvector lưu vector embedding để truy hồi ký ức/ngữ cảnh của người dùng.
+\end{itemize}
+
+Cách tổ chức này gần với kiến trúc ba lớp truyền thống, tuy nhiên có bổ sung tầng AI Agent riêng. Tầng AI Agent là điểm khác biệt quan trọng của hệ thống vì chức năng chính của ứng dụng không chỉ là CRUD dữ liệu mà còn là tạo lập kế hoạch du lịch tự động dựa trên ngôn ngữ tự nhiên. Tầng này được tách riêng để dễ thay đổi mô hình ngôn ngữ, công cụ tìm kiếm hoặc các bước xử lý mà không ảnh hưởng trực tiếp đến giao diện và cơ sở dữ liệu.
+
+Về phía frontend, ứng dụng sử dụng mô hình component-based. Các màn hình chính như đăng nhập, đăng ký, dashboard, chi tiết chuyến đi và hồ sơ cá nhân được đặt trong thư mục \texttt{frontend/app}. Các thành phần tái sử dụng như timeline lịch trình, bản đồ tương tác và khung chat được đặt trong \texttt{frontend/components}. Các hàm gọi API và WebSocket được gom vào \texttt{frontend/lib}, giúp giao diện không phụ thuộc trực tiếp vào chi tiết URL hoặc header xác thực.
+
+Về phía backend, ứng dụng được chia thành các package rõ ràng: \texttt{core}, \texttt{models}, \texttt{routes}, \texttt{services} và \texttt{agents}. Package \texttt{routes} chỉ đóng vai trò nhận request, kiểm tra quyền và gọi service tương ứng. Package \texttt{models} định nghĩa các bảng dữ liệu bằng SQLModel. Package \texttt{services} chứa logic nghiệp vụ chính. Package \texttt{agents} chứa toàn bộ thiết kế LangGraph, bao gồm trạng thái dùng chung, graph điều phối và các node xử lý.
+
+\subsection{Thiết kế tổng quan}
+
+Biểu đồ gói UML của hệ thống được thiết kế theo các tầng từ trên xuống dưới. Các gói ở tầng trên được phép phụ thuộc vào gói tầng dưới, ngược lại các gói tầng dưới không phụ thuộc vào tầng trên. Cách thiết kế này giúp hạn chế phụ thuộc vòng và làm rõ trách nhiệm của từng phần trong hệ thống.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{Hinhve/package_diagram_travelai.png}
+    \caption{Biểu đồ gói tổng quan của hệ thống AI Travel Assistant}
+    \label{fig:package-diagram-travelai}
+\end{figure}
+
+Các package chính trong hệ thống gồm:
+
+\begin{itemize}
+    \item \textbf{frontend.app}: chứa các route và màn hình chính của ứng dụng như \texttt{/login}, \texttt{/register}, \texttt{/dashboard}, \texttt{/profile} và \texttt{/trips/[id]}.
+    \item \textbf{frontend.components}: chứa các component giao diện có thể tái sử dụng, bao gồm \texttt{Dashboard}, \texttt{ChatInterface} và \texttt{InteractiveMap}.
+    \item \textbf{frontend.lib}: đóng gói các hàm giao tiếp với backend qua REST API và WebSocket.
+    \item \textbf{backend.routes}: định nghĩa các endpoint HTTP/WebSocket như \texttt{/auth}, \texttt{/trips}, \texttt{/itinerary} và \texttt{/ai/chat-stream}.
+    \item \textbf{backend.services}: chứa logic nghiệp vụ, ví dụ tạo/xóa chuyến đi, cập nhật lịch trình, lưu và truy hồi memory.
+    \item \textbf{backend.agents}: chứa LangGraph Agent, bao gồm graph điều phối, state, tools và các node xử lý.
+    \item \textbf{backend.models}: định nghĩa các lớp dữ liệu ánh xạ với bảng trong cơ sở dữ liệu.
+    \item \textbf{backend.core}: chứa cấu hình môi trường, kết nối cơ sở dữ liệu và xử lý bảo mật JWT/bcrypt.
+    \item \textbf{external.services}: biểu diễn các dịch vụ bên ngoài như OpenAI API, Tavily Search API và OpenStreetMap.
+    \item \textbf{database}: biểu diễn PostgreSQL và pgvector.
+\end{itemize}
+
+Quan hệ phụ thuộc chính như sau: \texttt{frontend.app} phụ thuộc vào \texttt{frontend.components} và \texttt{frontend.lib}. \texttt{frontend.lib} gọi các endpoint thuộc \texttt{backend.routes}. \texttt{backend.routes} phụ thuộc vào \texttt{backend.services}, \texttt{backend.core} và một số model để khai báo kiểu dữ liệu trả về. \texttt{backend.services} phụ thuộc vào \texttt{backend.models} và \texttt{backend.core.database}. \texttt{backend.agents} phụ thuộc vào \texttt{backend.services}, \texttt{backend.models}, \texttt{backend.core.config} và các dịch vụ bên ngoài. Tầng cơ sở dữ liệu không phụ thuộc ngược lại vào tầng ứng dụng.
+
+Để mô tả trực quan và chi tiết hơn sự vận hành thực tế của hệ thống, sơ đồ kiến trúc phân tầng chi tiết dưới đây thể hiện sự tương tác từ tầng trình bày (Next.js), tầng API (FastAPI), tầng tác tử AI (LangGraph) cùng các kết nối cơ sở dữ liệu và API bên ngoài.
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[
+        node distance=0.9cm and 1.2cm,
+        font=\sffamily\scriptsize,
+        box/.style={rectangle, draw, rounded corners=3pt, minimum width=2.1cm, minimum height=0.7cm, text centered, fill=white, drop shadow={opacity=0.05}},
+        subsys/.style={rectangle, draw, dashed, inner sep=0.3cm, rounded corners=5pt, fill opacity=0.08},
+        arrow/.style={-Latex, thick, draw=black!70},
+        darrow/.style={-Latex, thick, dashed, draw=black!50}
+    ]
+
+        % === CLIENT & FRONTEND ===
+        \node [box, fill=white, draw=gray] (client) {Client Browser\\(Chat UI, Map, Timeline)};
+        
+        \node [box, fill=feColor, draw=feBorder, below=0.8cm of client] (fePages) {Next.js Pages\\/dashboard, /trips/[id]};
+        \node [box, fill=feColor, draw=feBorder, right=0.3cm of fePages] (feAuth) {AuthProvider\\(JWT Store)};
+        \node [box, fill=feColor, draw=feBorder, left=0.3cm of fePages] (feClient) {API \& WS Client\\(lib/api.ts)};
+        
+        % Background Frontend
+        \begin{scope}[on background layer]
+            \node [subsys, fill=feColor, draw=feBorder, label={[feBorder]above right:\textbf{Frontend (Next.js)}}] 
+                (feGroup) [fit=(fePages) (feAuth) (feClient)] {};
+        \end{scope}
+
+        % === BACKEND ===
+        \node [box, fill=beColor, draw=beBorder, below=1.6cm of fePages] (beRouters) {Routers\\/auth, /trips, /ai};
+        \node [box, fill=beColor, draw=beBorder, left=0.3cm of beRouters] (beAuth) {Security\\(JWT/bcrypt)};
+        \node [box, fill=beColor, draw=beBorder, right=0.3cm of beRouters] (beServices) {TripService\\(CRUD Logic)};
+
+        % Background Backend
+        \begin{scope}[on background layer]
+            \node [subsys, fill=beColor, draw=beBorder, label={[beBorder]above right:\textbf{Backend (FastAPI)}}] 
+                (beGroup) [fit=(beRouters) (beAuth) (beServices)] {};
+        \end{scope}
+
+        % === DATABASE ===
+        \node [box, fill=dbColor, draw=dbBorder, below=1.8cm of beServices] (dbPostgres) {PostgreSQL + pgvector\\(Port 5433)};
+        
+        % === EXTERNAL APIS ===
+        \node [box, fill=extColor, draw=extBorder, left=3.5cm of dbPostgres] (extOpenAI) {OpenAI API\\(GPT-4o, Embeddings)};
+        \node [box, fill=extColor, draw=extBorder, below=0.4cm of extOpenAI] (extTavily) {Tavily Search API\\(Travel Info)};
+
+        % Background External
+        \begin{scope}[on background layer]
+            \node [subsys, fill=extColor, draw=extBorder, label={[extBorder]above right:\textbf{External Services}}] 
+                (extGroup) [fit=(extOpenAI) (extTavily)] {};
+        \end{scope}
+
+        % === LANGGRAPH AGENT ENGINE ===
+        \node [box, fill=agentColor, draw=agentBorder, right=3.5cm of beServices] (agUnderstand) {understand\_node\\(Parse intent/entities)};
+        \node [box, fill=agentColor, draw=agentBorder, below=0.5cm of agUnderstand] (agDecision) {decision\_node\\(Routing decision)};
+        \node [box, fill=agentColor, draw=agentBorder, right=0.3cm of agDecision] (agRetrieve) {retrieve\_node\\(Load DB \& Memory)};
+        \node [box, fill=agentColor, draw=agentBorder, below=0.5cm of agDecision] (agSearch) {search\_node\\(Tavily search)};
+        \node [box, fill=agentColor, draw=agentBorder, below=0.5cm of agSearch] (agPlan) {plan\_node\\(Gen itinerary JSON)};
+        \node [box, fill=agentColor, draw=agentBorder, right=0.3cm of agPlan] (agAnswer) {answer\_node\\(Response quick)};
+        \node [box, fill=agentColor, draw=agentBorder, below=0.5cm of agPlan] (agConstraint) {constraint\_node\\(Check budget/overlap)};
+        \node [box, fill=agentColor, draw=agentBorder, below=0.5cm of agConstraint] (agFinalize) {finalize\_node\\(Save DB \& memory)};
+
+        % Background Agent
+        \begin{scope}[on background layer]
+            \node [subsys, fill=agentColor, draw=agentBorder, label={[agentBorder]above right:\textbf{AI Agent (LangGraph Engine)}}] 
+                (agentGroup) [fit=(agUnderstand) (agDecision) (agRetrieve) (agSearch) (agPlan) (agAnswer) (agConstraint) (agFinalize)] {};
+        \end{scope}
+
+        % === CONNECTIONS ===
+        \draw [arrow] (client) -- (feGroup.north);
+        \draw [arrow] (feClient.south) -- node[left, align=center, font=\tiny\sffamily] {HTTP REST /\\WebSocket} (beRouters.north);
+        \draw [arrow] (beRouters) -- (beAuth);
+        \draw [arrow] (beRouters) -- (beServices);
+        
+        \draw [arrow] (beRouters.east) -- node[above, font=\tiny\sffamily] {run\_agent} (agUnderstand.west);
+        \draw [arrow] (agUnderstand) -- (agDecision);
+        \draw [arrow] (agDecision) -- (agSearch);
+        \draw [arrow] (agDecision) -- (agRetrieve);
+        \draw [arrow] (agRetrieve) -- (agPlan);
+        \draw [arrow] (agSearch) -- (agPlan);
+        \draw [arrow] (agSearch) -- (agAnswer);
+        \draw [arrow] (agAnswer) -- (agFinalize);
+        \draw [arrow] (agPlan) -- (agConstraint);
+        \draw [arrow] (agConstraint) -- (agFinalize);
+
+        \draw [arrow] (beServices.south) -- (dbPostgres.north);
+        \draw [arrow] (agFinalize.south) |- (dbPostgres.east);
+        \draw [arrow] (agRetrieve.south) |- (dbPostgres.east);
+
+        % External API connections
+        \draw [darrow] (agUnderstand.west) -| (extOpenAI.north);
+        \draw [darrow] (agPlan.west) -| (extOpenAI.north);
+        \draw [darrow] (agSearch.west) -| (extTavily.north);
+        \draw [darrow] (agRetrieve.west) -| (extOpenAI.north);
+        \draw [darrow] (agFinalize.west) -| (extOpenAI.north);
+
+    \end{tikzpicture}
+    \caption{Biểu đồ kiến trúc phân tầng chi tiết hệ thống AI Travel Assistant}
+    \label{fig:detailed-architecture-travelai}
+\end{figure}
+
+\subsection{Thiết kế chi tiết gói}
+
+\subsubsection{Gói xác thực và người dùng}
+
+Gói xác thực bao gồm route \texttt{auth}, model \texttt{User} và các hàm bảo mật trong \texttt{core.security}. Người dùng đăng ký bằng email và mật khẩu. Mật khẩu được mã hóa bằng bcrypt trước khi lưu vào cơ sở dữ liệu. Khi đăng nhập thành công, hệ thống sinh JWT token và frontend lưu token này trong \texttt{localStorage}. Các API yêu cầu đăng nhập sử dụng dependency \texttt{get\_current\_user} để giải mã token và truy vấn người dùng hiện tại.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{Hinhve/auth_class_diagram.png}
+    \caption{Thiết kế lớp cho gói xác thực và người dùng}
+    \label{fig:auth-class-diagram}
+\end{figure}
+
+Các lớp/chức năng chính:
+
+\begin{itemize}
+    \item \texttt{User}: entity người dùng, lưu email, mật khẩu đã mã hóa, hồ sơ du lịch và trạng thái tài khoản.
+    \item \texttt{UserCreate}, \texttt{UserRead}, \texttt{UserUpdate}: các schema dùng cho input/output API.
+    \item \texttt{auth.router}: cung cấp API đăng ký, đăng nhập, xem và cập nhật thông tin cá nhân.
+    \item \texttt{security}: cung cấp các hàm \texttt{hash\_password}, \texttt{verify\_password}, \texttt{create\_access\_token}, \texttt{decode\_token} và \texttt{get\_current\_user}.
+\end{itemize}
+
+\subsubsection{Gói quản lý chuyến đi và lịch trình}
+
+Gói quản lý chuyến đi là phần nghiệp vụ trung tâm của hệ thống. Một người dùng có thể có nhiều chuyến đi. Mỗi chuyến đi có nhiều mục lịch trình. Các mục lịch trình được phân loại thành điểm tham quan, bữa ăn, phương tiện di chuyển hoặc nơi lưu trú.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{Hinhve/trip_itinerary_class_diagram.png}
+    \caption{Thiết kế lớp cho gói chuyến đi và lịch trình}
+    \label{fig:trip-itinerary-class-diagram}
+\end{figure}
+
+Các lớp chính:
+
+\begin{itemize}
+    \item \texttt{Trip}: lưu thông tin chuyến đi gồm tiêu đề, điểm đến, ngày bắt đầu, ngày kết thúc, ngân sách, tiền tệ và trạng thái.
+    \item \texttt{ItineraryItem}: lưu một hoạt động trong lịch trình, gồm ngày thứ mấy, thời gian bắt đầu/kết thúc, loại hoạt động, trạng thái và thông tin chi tiết dạng JSON.
+    \item \texttt{TripService}: đóng gói các thao tác nghiệp vụ như lấy danh sách chuyến đi, lấy chi tiết chuyến đi, tạo chuyến đi, cập nhật chuyến đi, xóa chuyến đi và thay thế danh sách lịch trình.
+    \item \texttt{trips.router}: cung cấp các API liên quan đến chuyến đi và API tạo chuyến đi bằng AI.
+    \item \texttt{itinerary.router}: cung cấp API xác nhận và hoàn thành một mục lịch trình.
+\end{itemize}
+
+\subsubsection{Gói tác tử AI}
+
+Gói tác tử AI được thiết kế theo mô hình state machine của LangGraph. Thay vì gọi trực tiếp mô hình ngôn ngữ để sinh toàn bộ kết quả, hệ thống chia quá trình xử lý thành nhiều node nhỏ. Mỗi node nhận vào \texttt{AgentState}, cập nhật một phần thông tin rồi chuyển sang node tiếp theo.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{Hinhve/agent_class_diagram.png}
+    \caption{Thiết kế lớp và node cho gói tác tử AI}
+    \label{fig:agent-class-diagram}
+\end{figure}
+
+Các thành phần chính:
+
+\begin{itemize}
+    \item \texttt{AgentState}: kiểu dữ liệu dùng chung giữa các node, chứa yêu cầu người dùng, intent, entities, dữ liệu trip, kết quả tìm kiếm, memory, conflicts và messages.
+    \item \texttt{graph}: xây dựng LangGraph và định nghĩa luồng chuyển giữa các node.
+    \item \texttt{understand\_node}: phân tích câu nhập tự nhiên để xác định intent và trích xuất thông tin.
+    \item \texttt{decision\_node}: chọn nhánh xử lý phù hợp dựa trên intent và \texttt{trip\_id}.
+    \item \texttt{retrieve\_node}: lấy dữ liệu chuyến đi hiện tại và truy hồi memory liên quan.
+    \item \texttt{search\_node}: tìm kiếm thông tin địa điểm bằng Tavily hoặc fallback mock.
+    \item \texttt{plan\_node}: gọi mô hình ngôn ngữ để sinh lịch trình dạng JSON.
+    \item \texttt{answer\_node}: trả lời câu hỏi thông tin mà không tạo lịch trình mới.
+    \item \texttt{constraint\_node}: kiểm tra xung đột thời gian và vượt ngân sách.
+    \item \texttt{finalize\_node}: lưu kết quả vào cơ sở dữ liệu và tạo phản hồi cuối.
+\end{itemize}
+
+\section{Thiết kế chi tiết}
+
+\subsection{Thiết kế giao diện}
+
+Ứng dụng hướng tới người dùng sử dụng trình duyệt web trên máy tính cá nhân và thiết bị di động. Do đó giao diện được thiết kế theo hướng responsive, ưu tiên độ rõ ràng, dễ thao tác và phù hợp với ứng dụng hỗ trợ lập kế hoạch. Độ phân giải mục tiêu chính là màn hình desktop từ 1366x768 trở lên; đồng thời các màn hình như đăng nhập, đăng ký, dashboard và profile vẫn có thể hiển thị trên thiết bị di động có chiều rộng khoảng 375px.
+
+Về màu sắc, giao diện sử dụng nền tối với các sắc thái xanh đậm, chàm và xám nhằm tạo cảm giác hiện đại, đồng thời làm nổi bật các thành phần tương tác. Các nút hành động chính sử dụng màu chàm. Các trạng thái được phân biệt bằng màu: xanh dương cho \texttt{PLANNED}, xanh lá cho \texttt{ACTIVE}/\texttt{COMPLETED}, đỏ cho lỗi hoặc thao tác nguy hiểm. Nội dung chữ sử dụng màu trắng hoặc xám nhạt để đảm bảo độ tương phản trên nền tối.
+
+Các nguyên tắc chuẩn hóa giao diện gồm:
+
+\begin{itemize}
+    \item Các form nhập liệu có cùng kiểu bo góc, màu nền, viền và hiệu ứng focus.
+    \item Nút hành động chính sử dụng cùng màu nền và trạng thái disabled.
+    \item Thông báo lỗi được hiển thị gần vùng thao tác gây lỗi, ví dụ trong form đăng nhập/đăng ký.
+    \item Dashboard hiển thị dữ liệu dạng thẻ để người dùng dễ quét nhanh các chuyến đi.
+    \item Màn hình chi tiết chuyến đi chia bố cục thành vùng nội dung chính và sidebar chat AI.
+    \item Các hoạt động trong lịch trình được nhóm theo ngày và phân biệt loại hoạt động bằng màu viền trái.
+    \item Bản đồ được đặt trong tab riêng để tránh làm rối giao diện timeline.
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{Hinhve/ui_login.png}
+    \caption{Thiết kế giao diện đăng nhập}
+    \label{fig:ui-login}
+\end{figure}
+
+Màn hình đăng nhập tập trung vào tác vụ xác thực, gồm logo ứng dụng, tiêu đề, trường email, trường mật khẩu, nút đăng nhập và liên kết sang trang đăng ký. Khi thông tin đăng nhập sai, hệ thống hiển thị thông báo lỗi ngay trong form.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{Hinhve/ui_dashboard.png}
+    \caption{Thiết kế giao diện dashboard quản lý chuyến đi}
+    \label{fig:ui-dashboard}
+\end{figure}
+
+Màn hình dashboard là màn hình chính sau khi đăng nhập. Người dùng có thể nhập yêu cầu bằng ngôn ngữ tự nhiên để tạo chuyến đi mới. Bên dưới là danh sách các chuyến đi đã tạo, mỗi thẻ hiển thị tên chuyến đi, điểm đến, ngày đi, trạng thái và ngân sách.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{Hinhve/ui_trip_detail.png}
+    \caption{Thiết kế giao diện chi tiết chuyến đi}
+    \label{fig:ui-trip-detail}
+\end{figure}
+
+Màn hình chi tiết chuyến đi gồm thanh thông tin chuyến đi, tab timeline/map và khung chat AI. Timeline hiển thị các hoạt động theo từng ngày. Người dùng có thể xác nhận hoặc hoàn thành từng hoạt động. Khung chat cho phép người dùng hỏi thông tin hoặc yêu cầu chỉnh sửa chuyến đi trong ngữ cảnh hiện tại.
+
+\subsection{Thiết kế lớp}
+
+Trong phần này, báo cáo tập trung vào bốn lớp/thành phần quan trọng nhất: \texttt{TripService}, \texttt{MemoryStream}, \texttt{AgentState} và \texttt{ChatInterface}.
+
+\subsubsection{Lớp TripService}
+
+\texttt{TripService} là lớp service xử lý nghiệp vụ chuyến đi. Lớp này nhận \texttt{AsyncSession} trong constructor và sử dụng session đó để thao tác với cơ sở dữ liệu.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lll}
+\hline
+\textbf{Thành phần} & \textbf{Kiểu} & \textbf{Ý nghĩa} \\ \hline
+\texttt{session} & \texttt{AsyncSession} & Phiên làm việc với cơ sở dữ liệu \\ \hline
+\texttt{get\_trips(user\_id)} & Method & Lấy danh sách chuyến đi của một người dùng \\ \hline
+\texttt{get\_trip(trip\_id, user\_id)} & Method & Lấy một chuyến đi và kiểm tra quyền sở hữu \\ \hline
+\texttt{create\_trip(trip\_data, user\_id)} & Method & Tạo chuyến đi mới \\ \hline
+\texttt{update\_trip(trip, update\_data)} & Method & Cập nhật thông tin chuyến đi \\ \hline
+\texttt{delete\_trip(trip)} & Method & Xóa chuyến đi cùng dữ liệu liên quan \\ \hline
+\texttt{get\_itinerary(trip\_id)} & Method & Lấy lịch trình của chuyến đi \\ \hline
+\texttt{update\_itinerary\_items(trip\_id, items)} & Method & Thay thế danh sách lịch trình \\ \hline
+\end{tabular}
+\caption{Thiết kế lớp TripService}
+\label{tab:trip-service-design}
+\end{table}
+
+\subsubsection{Lớp MemoryStream}
+
+\texttt{MemoryStream} biểu diễn một đơn vị bộ nhớ của AI. Mỗi memory gắn với người dùng, có thể gắn với một chuyến đi cụ thể hoặc là memory chung. Nội dung memory được chuyển thành vector embedding để phục vụ truy hồi ngữ nghĩa.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lll}
+\hline
+\textbf{Thuộc tính} & \textbf{Kiểu} & \textbf{Ý nghĩa} \\ \hline
+\texttt{id} & \texttt{int} & Khóa chính \\ \hline
+\texttt{user\_id} & \texttt{int} & Người dùng sở hữu memory \\ \hline
+\texttt{trip\_id} & \texttt{Optional[int]} & Chuyến đi liên quan, có thể rỗng \\ \hline
+\texttt{content} & \texttt{str} & Nội dung memory \\ \hline
+\texttt{memory\_type} & \texttt{str} & Loại memory: preference, history hoặc constraint \\ \hline
+\texttt{vector\_embedding} & \texttt{Vector(1536)} & Vector embedding dùng cho semantic search \\ \hline
+\texttt{created\_at} & \texttt{datetime} & Thời điểm tạo memory \\ \hline
+\end{tabular}
+\caption{Thiết kế lớp MemoryStream}
+\label{tab:memory-stream-design}
+\end{table}
+
+\subsubsection{Lớp AgentState}
+
+\texttt{AgentState} là trạng thái trung tâm của LangGraph Agent. Đây không phải bảng dữ liệu trong database mà là cấu trúc truyền giữa các node trong một lần xử lý yêu cầu AI.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lll}
+\hline
+\textbf{Trường} & \textbf{Kiểu} & \textbf{Ý nghĩa} \\ \hline
+\texttt{user\_message} & \texttt{str} & Yêu cầu gốc của người dùng \\ \hline
+\texttt{user\_id} & \texttt{int} & Người dùng hiện tại \\ \hline
+\texttt{trip\_id} & \texttt{Optional[int]} & Chuyến đi đang được hỏi/sửa \\ \hline
+\texttt{intent} & \texttt{str} & Ý định: tạo, sửa hoặc hỏi thông tin \\ \hline
+\texttt{entities} & \texttt{dict} & Thông tin trích xuất từ câu nhập \\ \hline
+\texttt{existing\_trip} & \texttt{Optional[dict]} & Dữ liệu chuyến đi hiện có \\ \hline
+\texttt{memory\_context} & \texttt{list[str]} & Memory liên quan được truy hồi \\ \hline
+\texttt{search\_results} & \texttt{list[dict]} & Kết quả tìm kiếm bên ngoài \\ \hline
+\texttt{trip\_data} & \texttt{Optional[dict]} & Dữ liệu chuyến đi do AI tạo \\ \hline
+\texttt{itinerary\_items} & \texttt{list[dict]} & Danh sách hoạt động \\ \hline
+\texttt{conflicts} & \texttt{list[dict]} & Các xung đột phát hiện được \\ \hline
+\texttt{messages} & \texttt{list[dict]} & Phản hồi gửi về frontend \\ \hline
+\end{tabular}
+\caption{Thiết kế AgentState}
+\label{tab:agent-state-design}
+\end{table}
+
+\subsubsection{Component ChatInterface}
+
+\texttt{ChatInterface} là component frontend xử lý chat AI trong màn hình chi tiết chuyến đi. Component này mở WebSocket, gửi tin nhắn, nhận các message dạng \texttt{token}, \texttt{final}, \texttt{error}, lưu lịch sử chat theo từng chuyến đi và gọi callback để refresh dữ liệu khi AI cập nhật lịch trình.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lll}
+\hline
+\textbf{Thành phần} & \textbf{Kiểu} & \textbf{Ý nghĩa} \\ \hline
+\texttt{tripId} & Prop & Chuyến đi hiện tại \\ \hline
+\texttt{onTripUpdate} & Prop & Hàm refresh dữ liệu chuyến đi \\ \hline
+\texttt{messages} & State & Danh sách tin nhắn hiển thị \\ \hline
+\texttt{input} & State & Nội dung người dùng đang nhập \\ \hline
+\texttt{connected} & State & Trạng thái kết nối WebSocket \\ \hline
+\texttt{typing} & State & Trạng thái AI đang phản hồi \\ \hline
+\texttt{connect()} & Function & Tạo kết nối WebSocket \\ \hline
+\texttt{sendMessage()} & Function & Gửi tin nhắn tới backend \\ \hline
+\texttt{handleMessage()} & Function & Xử lý message nhận được từ WebSocket \\ \hline
+\end{tabular}
+\caption{Thiết kế component ChatInterface}
+\label{tab:chat-interface-design}
+\end{table}
+
+\subsubsection{Biểu đồ trình tự cho use case tạo chuyến đi bằng AI}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{Hinhve/sequence_create_trip.png}
+    \caption{Biểu đồ trình tự use case tạo chuyến đi bằng AI}
+    \label{fig:sequence-create-trip}
+\end{figure}
+
+Luồng xử lý bắt đầu khi người dùng nhập yêu cầu tại dashboard. Frontend gửi request \texttt{POST /trips/generate} kèm JWT. Backend xác thực người dùng, sau đó gọi \texttt{run\_agent}. LangGraph lần lượt chạy các node \texttt{understand}, \texttt{decision}, \texttt{search}, \texttt{plan}, \texttt{constraint} và \texttt{finalize}. Ở bước cuối, hệ thống tạo bản ghi \texttt{Trip}, tạo các \texttt{ItineraryItem}, lưu memory và trả về \texttt{trip\_id} để frontend điều hướng sang trang chi tiết.
+
+\subsubsection{Biểu đồ trình tự cho use case chat trong chuyến đi}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{Hinhve/sequence_chat_trip.png}
+    \caption{Biểu đồ trình tự use case chat AI trong chuyến đi}
+    \label{fig:sequence-chat-trip}
+\end{figure}
+
+Khi người dùng mở trang chi tiết chuyến đi, frontend tạo kết nối WebSocket tới \texttt{/ai/chat-stream}. Token được truyền qua query string để backend xác thực. Khi người dùng gửi tin nhắn, backend chạy \texttt{run\_agent\_streaming} và gửi từng thông báo tiến trình về frontend. Khi kết thúc, backend gửi message \texttt{final}; nếu metadata có lịch trình mới, frontend gọi lại API để tải lại dữ liệu chuyến đi.
+
+\subsection{Thiết kế cơ sở dữ liệu}
+
+Cơ sở dữ liệu của hệ thống sử dụng PostgreSQL. Các bảng chính gồm \texttt{users}, \texttt{trips}, \texttt{itinerary\_items} và \texttt{memory\_streams}. Ngoài các kiểu dữ liệu quan hệ thông thường, hệ thống sử dụng extension pgvector để lưu vector embedding trong bảng \texttt{memory\_streams}.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{Hinhve/er_diagram_travelai.png}
+    \caption{Biểu đồ thực thể liên kết của hệ thống}
+    \label{fig:er-diagram-travelai}
+\end{figure}
+
+Mô tả các bảng:
+
+\begin{itemize}
+    \item \textbf{users}: lưu thông tin tài khoản, gồm email, mật khẩu đã mã hóa, hồ sơ du lịch, ngày tạo và trạng thái hoạt động.
+    \item \textbf{trips}: lưu thông tin chuyến đi. Mỗi trip thuộc về một user thông qua khóa ngoại \texttt{user\_id}.
+    \item \textbf{itinerary\_items}: lưu các hoạt động trong lịch trình. Mỗi item thuộc về một trip thông qua khóa ngoại \texttt{trip\_id}.
+    \item \textbf{memory\_streams}: lưu các memory của người dùng. Mỗi memory thuộc về một user và có thể liên quan đến một trip cụ thể. Trường \texttt{vector\_embedding} dùng để tìm kiếm ngữ nghĩa.
+\end{itemize}
+
+Quan hệ giữa các thực thể:
+
+\begin{itemize}
+    \item Một \texttt{User} có nhiều \texttt{Trip}; một \texttt{Trip} chỉ thuộc về một \texttt{User}.
+    \item Một \texttt{Trip} có nhiều \texttt{ItineraryItem}; một \texttt{ItineraryItem} chỉ thuộc về một \texttt{Trip}.
+    \item Một \texttt{User} có nhiều \texttt{MemoryStream}; một \texttt{MemoryStream} chỉ thuộc về một \texttt{User}.
+    \item Một \texttt{Trip} có thể có nhiều \texttt{MemoryStream}; tuy nhiên \texttt{trip\_id} trong \texttt{MemoryStream} có thể rỗng để biểu diễn memory chung của người dùng.
+\end{itemize}
+
+\section{Xây dựng ứng dụng}
+
+\subsection{Thư viện và công cụ sử dụng}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lll}
+\hline
+\textbf{Mục đích} & \textbf{Công cụ/Thư viện} & \textbf{Phiên bản/URL} \\ \hline
+Ngôn ngữ backend & Python & 3.10+ \\ \hline
+Backend web framework & FastAPI & 0.111.0 \\ \hline
+ASGI server & Uvicorn & 0.29.0 \\ \hline
+ORM/model & SQLModel & 0.0.19 \\ \hline
+Database async driver & asyncpg & 0.29.0 \\ \hline
+Cơ sở dữ liệu & PostgreSQL + pgvector & Docker image \texttt{ankane/pgvector} \\ \hline
+AI workflow & LangGraph & 0.1.5 \\ \hline
+OpenAI integration & langchain-openai & 0.1.8 \\ \hline
+Vector extension client & pgvector & 0.2.5 \\ \hline
+Search API & Tavily Python & 0.3.3 \\ \hline
+Xác thực JWT & python-jose & 3.3.0 \\ \hline
+Mã hóa mật khẩu & bcrypt & 4.1.3 \\ \hline
+Ngôn ngữ frontend & TypeScript & 5.x \\ \hline
+Frontend framework & Next.js & 16.2.1 \\ \hline
+UI library & React, React DOM & 19.2.4 \\ \hline
+CSS framework & Tailwind CSS & 4.x \\ \hline
+Drag and drop & @dnd-kit & core 6.3.1, sortable 10.0.0 \\ \hline
+Bản đồ & Leaflet, React Leaflet & Leaflet 1.9.4, React Leaflet 5.0.0 \\ \hline
+Markdown renderer & react-markdown & 10.1.0 \\ \hline
+Icon & lucide-react & 1.7.0 \\ \hline
+Đóng gói triển khai & Docker, Docker Compose & https://www.docker.com/ \\ \hline
+Quản lý mã nguồn & Git & https://git-scm.com/ \\ \hline
+\end{tabular}
+\caption{Danh sách thư viện và công cụ sử dụng}
+\label{tab:tools-and-libraries}
+\end{table}
+
+\subsection{Kết quả đạt được}
+
+Sản phẩm đạt được là một ứng dụng web hỗ trợ lập kế hoạch du lịch bằng AI. Ứng dụng gồm ba thành phần đóng gói chính: frontend Next.js, backend FastAPI và cơ sở dữ liệu PostgreSQL/pgvector. Người dùng có thể đăng ký, đăng nhập, tạo chuyến đi bằng ngôn ngữ tự nhiên, xem danh sách chuyến đi, xem lịch trình theo ngày, xem bản đồ các địa điểm, xác nhận/hoàn thành hoạt động và chat với AI trong ngữ cảnh chuyến đi.
+
+Backend cung cấp REST API và WebSocket API. REST API xử lý các chức năng xác thực, quản lý chuyến đi và lịch trình. WebSocket API phục vụ chat AI thời gian thực. Frontend cung cấp giao diện tương tác cho toàn bộ chức năng người dùng. Cơ sở dữ liệu lưu dữ liệu nghiệp vụ và memory embedding để cá nhân hóa phản hồi AI.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lll}
+\hline
+\textbf{Thông tin} & \textbf{Giá trị thống kê} & \textbf{Ghi chú} \\ \hline
+Số dòng code backend & 1692 dòng & Thư mục \texttt{backend/app} \\ \hline
+Số dòng code frontend chính & 1580 dòng & \texttt{frontend/app}, \texttt{components}, \texttt{lib}, \texttt{types} \\ \hline
+Tổng số file nguồn chính & 45 file & Python, TypeScript, TSX, CSS \\ \hline
+Số package/thư mục backend & 14 thư mục & Gồm core, models, routes, services, agents \\ \hline
+Số package/thư mục frontend chính & 10 thư mục & Gồm app, components, lib, types \\ \hline
+Dung lượng toàn bộ mã nguồn & Khoảng 416 MB & Bao gồm dependencies/build cache nếu có \\ \hline
+Số service Docker & 3 service & postgres, backend, frontend \\ \hline
+\end{tabular}
+\caption{Thống kê kết quả xây dựng ứng dụng}
+\label{tab:implementation-stats}
+\end{table}
+
+\subsection{Minh họa các chức năng chính}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{Hinhve/demo_register_login.png}
+    \caption{Chức năng đăng ký và đăng nhập}
+    \label{fig:demo-auth}
+\end{figure}
+
+Chức năng đăng ký và đăng nhập cho phép người dùng tạo tài khoản và truy cập hệ thống. Sau khi đăng nhập thành công, backend trả về JWT token để frontend sử dụng trong các request tiếp theo.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{Hinhve/demo_generate_trip.png}
+    \caption{Chức năng tạo chuyến đi bằng AI}
+    \label{fig:demo-generate-trip}
+\end{figure}
+
+Người dùng nhập yêu cầu bằng ngôn ngữ tự nhiên, ví dụ ``Lập kế hoạch đi Đà Nẵng 3 ngày với ngân sách 3 triệu''. Hệ thống phân tích yêu cầu, tìm kiếm thông tin điểm đến, sinh lịch trình và lưu chuyến đi vào cơ sở dữ liệu.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{Hinhve/demo_timeline.png}
+    \caption{Chức năng xem lịch trình theo ngày}
+    \label{fig:demo-timeline}
+\end{figure}
+
+Lịch trình được nhóm theo từng ngày. Mỗi hoạt động hiển thị loại hoạt động, thời gian, địa chỉ, ghi chú, chi phí ước tính và trạng thái. Người dùng có thể xác nhận hoặc đánh dấu hoàn thành hoạt động.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{Hinhve/demo_map.png}
+    \caption{Chức năng bản đồ tương tác}
+    \label{fig:demo-map}
+\end{figure}
+
+Bản đồ hiển thị các địa điểm trong lịch trình bằng marker. Các marker được phân màu theo loại hoạt động. Nếu có nhiều điểm, hệ thống vẽ đường nối để người dùng hình dung tuyến di chuyển.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{Hinhve/demo_ai_chat.png}
+    \caption{Chức năng chat AI trong chuyến đi}
+    \label{fig:demo-ai-chat}
+\end{figure}
+
+Khung chat AI cho phép người dùng hỏi thông tin về chuyến đi hoặc yêu cầu chỉnh sửa kế hoạch. Hệ thống phản hồi theo luồng qua WebSocket, giúp người dùng thấy tiến trình xử lý thay vì phải chờ kết quả cuối cùng.
+
+\section{Kiểm thử}
+
+Quá trình kiểm thử tập trung vào các chức năng quan trọng nhất của hệ thống: xác thực người dùng, tạo chuyến đi bằng AI và chat AI trong ngữ cảnh chuyến đi. Các kỹ thuật kiểm thử được sử dụng gồm kiểm thử hộp đen, phân vùng tương đương, kiểm thử giá trị biên và kiểm thử luồng nghiệp vụ tích hợp.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{llll}
+\hline
+\textbf{Mã} & \textbf{Chức năng} & \textbf{Kịch bản kiểm thử} & \textbf{Kết quả mong đợi} \\ \hline
+TC01 & Đăng ký & Email mới, mật khẩu hợp lệ & Tạo tài khoản thành công \\ \hline
+TC02 & Đăng ký & Email đã tồn tại & Trả lỗi email đã được đăng ký \\ \hline
+TC03 & Đăng nhập & Email/mật khẩu đúng & Trả về JWT token \\ \hline
+TC04 & Đăng nhập & Sai mật khẩu & Trả lỗi 401 \\ \hline
+TC05 & Xem trips & Không có token & Chuyển về trang đăng nhập \\ \hline
+TC06 & Tạo trip AI & Message có điểm đến và số ngày & Tạo trip và itinerary \\ \hline
+TC07 & Tạo trip AI & Message thiếu số ngày & Mặc định số ngày là 3 \\ \hline
+TC08 & Chi tiết trip & User truy cập trip của mình & Hiển thị thông tin trip và itinerary \\ \hline
+TC09 & Xóa trip & User xóa trip của mình & Xóa trip và dữ liệu liên quan \\ \hline
+TC10 & Chat AI & Token hợp lệ, gửi câu hỏi & Nhận token tiến trình và message final \\ \hline
+TC11 & Chat AI & Token hết hạn/không hợp lệ & WebSocket đóng với lỗi xác thực \\ \hline
+TC12 & Confirm item & Item thuộc trip của user & Trạng thái chuyển sang CONFIRMED \\ \hline
+TC13 & Complete item & Item đã confirm & Trạng thái chuyển sang COMPLETED \\ \hline
+\end{tabular}
+\caption{Một số trường hợp kiểm thử chính}
+\label{tab:test-cases}
+\end{table}
+
+Đối với chức năng tạo chuyến đi bằng AI, ngoài việc kiểm tra response HTTP, cần kiểm tra dữ liệu được lưu trong cơ sở dữ liệu gồm bảng \texttt{trips} và \texttt{itinerary\_items}. Với chức năng chat AI, cần kiểm tra cả luồng WebSocket, bao gồm message tiến trình và message kết thúc. Với các API có yêu cầu phân quyền, cần kiểm tra trường hợp thiếu token, token sai và truy cập dữ liệu không thuộc người dùng hiện tại.
+
+Tổng kết, các trường hợp kiểm thử chính bao phủ các luồng nghiệp vụ quan trọng: xác thực, tạo dữ liệu bằng AI, truy xuất dữ liệu, cập nhật trạng thái và chat thời gian thực. Một số chức năng phụ như xuất PDF, thời tiết, booking và admin chưa được kiểm thử vì chưa hoàn thiện trong phạm vi hiện tại của sản phẩm.
+
+\section{Triển khai}
+
+Ứng dụng được thiết kế để triển khai bằng Docker Compose. Mô hình triển khai gồm ba container: \texttt{postgres}, \texttt{backend} và \texttt{frontend}. Container \texttt{postgres} sử dụng image \texttt{ankane/pgvector} để hỗ trợ lưu vector embedding. Container \texttt{backend} build từ thư mục \texttt{backend} và chạy FastAPI bằng Uvicorn. Container \texttt{frontend} build từ thư mục \texttt{frontend} và chạy ứng dụng Next.js.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{Hinhve/deployment_diagram.png}
+    \caption{Mô hình triển khai thử nghiệm bằng Docker Compose}
+    \label{fig:deployment-diagram}
+\end{figure}
+
+Cấu hình triển khai thử nghiệm:
+
+\begin{itemize}
+    \item Frontend chạy tại \texttt{http://localhost:3000}.
+    \item Backend API chạy tại \texttt{http://localhost:8000}.
+    \item Tài liệu API Swagger chạy tại \texttt{http://localhost:8000/docs}.
+    \item PostgreSQL được ánh xạ ra máy host qua cổng \texttt{5433}.
+    \item Biến môi trường được cấu hình trong file \texttt{.env}, bao gồm \texttt{DATABASE\_URL}, \texttt{SECRET\_KEY}, \texttt{OPENAI\_API\_KEY}, \texttt{TAVILY\_API\_KEY}, \texttt{NEXT\_PUBLIC\_API\_URL} và \texttt{NEXT\_PUBLIC\_WS\_URL}.
+\end{itemize}
+
+Quy trình khởi động hệ thống:
+
+\begin{verbatim}
+docker compose up -d --build
+\end{verbatim}
+
+Trong mô hình này, backend phụ thuộc vào trạng thái sẵn sàng của PostgreSQL. Docker Compose sử dụng healthcheck để đảm bảo database khởi động xong trước khi backend kết nối. Dữ liệu PostgreSQL được lưu trong Docker volume \texttt{postgres\_data}, nhờ đó dữ liệu không bị mất khi container restart.
+
+Mô hình triển khai thử nghiệm phù hợp cho quá trình phát triển, demo và đánh giá đồ án. Khi triển khai thực tế, hệ thống có thể được mở rộng bằng cách đưa frontend lên nền tảng hosting như Vercel, backend lên VPS hoặc cloud container service, database lên dịch vụ PostgreSQL managed, đồng thời cấu hình HTTPS, domain, backup database và giới hạn CORS theo domain chính thức.
+
+\end{document}

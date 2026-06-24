@@ -10,7 +10,7 @@ from app.core.security import (
     verify_password,
     get_current_user,
 )
-from app.models.user import User, UserCreate, UserRead
+from app.models.user import User, UserCreate, UserRead, UserUpdate, UserChangePassword
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -60,3 +60,36 @@ async def get_me(
     current_user: User = Depends(get_current_user),
 ):
     return current_user
+
+
+@router.patch("/me", response_model=UserRead)
+async def update_me(
+    update_data: UserUpdate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    if update_data.travel_profile is not None:
+        current_user.travel_profile = update_data.travel_profile
+    session.add(current_user)
+    await session.commit()
+    await session.refresh(current_user)
+    return current_user
+
+
+@router.put("/change-password")
+async def change_password(
+    payload: UserChangePassword,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    if not verify_password(payload.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Incorrect current password",
+        )
+    
+    current_user.hashed_password = hash_password(payload.new_password)
+    session.add(current_user)
+    await session.commit()
+    return {"message": "Password updated successfully"}
+

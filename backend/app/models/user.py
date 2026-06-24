@@ -31,3 +31,8 @@ class UserRead(UserBase):
 
 class UserUpdate(SQLModel):
     travel_profile: Optional[dict] = None
+
+
+class UserChangePassword(SQLModel):
+    current_password: str
+    new_password: str

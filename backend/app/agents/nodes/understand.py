@@ -15,11 +15,13 @@ IMPORTANT RULES for intent classification:
 - If the user mentions a destination AND wants to travel / plan / go there → "CREATE_TRIP"
 - If the user wants to change / update / modify an existing plan → "MODIFY_TRIP"
 - If the user is only asking a question without wanting to create a plan → "ASK_INFO"
+- If the user wants to search for / find flights, plane tickets, or book a flight → "SEARCH_FLIGHT"
+- If the user wants to search for / find hotels, accommodation, or book a hotel → "SEARCH_HOTEL"
 - Short messages like "du lich Ha Noi", "đi Đà Nẵng", "trip to Paris" → always "CREATE_TRIP"
 - When in doubt between CREATE_TRIP and ASK_INFO, prefer "CREATE_TRIP"
 
 Return a JSON object with exactly these keys:
-- intent: one of "CREATE_TRIP", "MODIFY_TRIP", "ASK_INFO"
+- intent: one of "CREATE_TRIP", "MODIFY_TRIP", "ASK_INFO", "SEARCH_FLIGHT", "SEARCH_HOTEL"
 - entities: object with:
   - location: string (city/country extracted, or null)
   - start_date: string ISO date or null
@@ -29,6 +31,12 @@ Return a JSON object with exactly these keys:
   - currency: string (default "USD") or null
   - preferences: list of strings (dietary, interests, etc.)
   - constraints: list of strings
+  - origin_airport: IATA airport code string or null (e.g. "HAN", "SGN") — for SEARCH_FLIGHT
+  - destination_airport: IATA airport code string or null (e.g. "DAN", "DAD") — for SEARCH_FLIGHT
+  - city_code: IATA city code string or null (e.g. "DAN") — for SEARCH_HOTEL
+  - checkin: string ISO date or null — for SEARCH_HOTEL
+  - checkout: string ISO date or null — for SEARCH_HOTEL
+  - adults: integer (default 1)
 
 Return ONLY valid JSON, no explanation, no markdown."""
 
@@ -61,4 +69,21 @@ async def understand_node(state: AgentState) -> AgentState:
     if not state["entities"].get("num_days"):
         state["entities"]["num_days"] = 3
 
+    # Build booking_params if booking intent
+    if state["intent"] in ("SEARCH_FLIGHT", "SEARCH_HOTEL"):
+        entities = state["entities"]
+        state["booking_params"] = {
+            "origin": entities.get("origin_airport"),
+            "destination": entities.get("destination_airport"),
+            "departure_date": entities.get("start_date"),
+            "return_date": entities.get("end_date"),
+            "city_code": entities.get("city_code") or entities.get("destination_airport"),
+            "checkin": entities.get("checkin") or entities.get("start_date"),
+            "checkout": entities.get("checkout") or entities.get("end_date"),
+            "adults": entities.get("adults") or 1,
+        }
+    else:
+        state["booking_params"] = {}
+
     return state
+

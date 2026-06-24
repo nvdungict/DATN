@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.models.trip import Trip, TripCreate, TripUpdate
+from app.models.trip import Trip, TripCreate, TripUpdate, TripRead
 from app.models.itinerary import ItineraryItem, ItineraryItemCreate
 
 
@@ -11,17 +11,58 @@ class TripService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_trips(self, user_id: int) -> list[Trip]:
-        result = await self.session.execute(
+    async def get_trips(self, user_id: int) -> list[TripRead]:
+        # Get owned trips
+        owned_result = await self.session.execute(
             select(Trip).where(Trip.user_id == user_id).order_by(Trip.created_at.desc())
         )
-        return result.scalars().all()
+        owned_trips = owned_result.scalars().all()
+        
+        all_trips = []
+        for t in owned_trips:
+            t_read = TripRead.model_validate(t)
+            t_read.user_role = "OWNER"
+            all_trips.append(t_read)
 
-    async def get_trip(self, trip_id: int, user_id: int) -> Optional[Trip]:
+        # Get collabs
+        from app.models.trip import TripCollaborator
+        collab_result = await self.session.execute(
+            select(Trip, TripCollaborator).join(TripCollaborator, Trip.id == TripCollaborator.trip_id)
+            .where(TripCollaborator.user_id == user_id, TripCollaborator.status == "ACCEPTED")
+            .order_by(Trip.created_at.desc())
+        )
+        for t, c in collab_result.all():
+            t_read = TripRead.model_validate(t)
+            t_read.user_role = c.role
+            all_trips.append(t_read)
+
+        all_trips.sort(key=lambda x: x.created_at, reverse=True)
+        return all_trips
+
+    async def get_trip(self, trip_id: int, user_id: int) -> Optional[TripRead]:
+        # Check owner
         result = await self.session.execute(
             select(Trip).where(Trip.id == trip_id, Trip.user_id == user_id)
         )
-        return result.scalar_one_or_none()
+        trip = result.scalar_one_or_none()
+        if trip:
+            t_read = TripRead.model_validate(trip)
+            t_read.user_role = "OWNER"
+            return t_read
+        
+        # Check collaborator
+        from app.models.trip import TripCollaborator
+        result = await self.session.execute(
+            select(Trip, TripCollaborator).join(TripCollaborator, Trip.id == TripCollaborator.trip_id)
+            .where(Trip.id == trip_id, TripCollaborator.user_id == user_id, TripCollaborator.status == "ACCEPTED")
+        )
+        row = result.first()
+        if row:
+            trip, collab = row
+            t_read = TripRead.model_validate(trip)
+            t_read.user_role = collab.role
+            return t_read
+        return None
 
     async def create_trip(self, trip_data: TripCreate, user_id: int) -> Trip:
         trip = Trip(**trip_data.model_dump(), user_id=user_id)
@@ -30,17 +71,24 @@ class TripService:
         await self.session.refresh(trip)
         return trip
 
-    async def update_trip(self, trip: Trip, update_data: TripUpdate) -> Trip:
+    async def update_trip(self, trip: TripRead, update_data: TripUpdate) -> TripRead:
         update_dict = update_data.model_dump(exclude_unset=True)
+        # We need to fetch the actual Trip from DB to update it
+        db_trip = await self.session.get(Trip, trip.id)
+        if not db_trip:
+            raise ValueError("Trip not found")
         for key, value in update_dict.items():
-            setattr(trip, key, value)
-        trip.updated_at = datetime.utcnow()
-        self.session.add(trip)
+            setattr(db_trip, key, value)
+        db_trip.updated_at = datetime.utcnow()
+        self.session.add(db_trip)
         await self.session.commit()
-        await self.session.refresh(trip)
-        return trip
+        await self.session.refresh(db_trip)
+        
+        t_read = TripRead.model_validate(db_trip)
+        t_read.user_role = trip.user_role
+        return t_read
 
-    async def delete_trip(self, trip: Trip) -> None:
+    async def delete_trip(self, trip: TripRead) -> None:
         """Cascade-delete trip: remove child rows first to avoid FK violation."""
         from app.models.memory import MemoryStream
         from sqlalchemy import delete
@@ -53,8 +101,15 @@ class TripService:
         await self.session.execute(
             delete(MemoryStream).where(MemoryStream.trip_id == trip.id)
         )
-        # 3. Xoá trip
-        await self.session.delete(trip)
+        # 3. Xóa collaborators
+        from app.models.trip import TripCollaborator
+        await self.session.execute(
+            delete(TripCollaborator).where(TripCollaborator.trip_id == trip.id)
+        )
+        # 4. Xoá trip
+        db_trip = await self.session.get(Trip, trip.id)
+        if db_trip:
+            await self.session.delete(db_trip)
         await self.session.commit()
 
     async def get_itinerary(self, trip_id: int) -> list[ItineraryItem]:
@@ -89,6 +144,17 @@ class TripService:
         new_items = []
         for item_dict in items_data:
             item_dict["trip_id"] = trip_id
+            
+            # Convert string times to datetime.time to avoid asyncpg DataError
+            for time_field in ["start_time", "end_time"]:
+                val = item_dict.get(time_field)
+                if isinstance(val, str):
+                    try:
+                        fmt = "%H:%M:%S" if val.count(":") == 2 else "%H:%M"
+                        item_dict[time_field] = datetime.strptime(val, fmt).time()
+                    except ValueError:
+                        pass
+
             item = ItineraryItem(**item_dict)
             self.session.add(item)
             new_items.append(item)

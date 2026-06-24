@@ -1,0 +1,17 @@
+1. UI -> thiết kế, update (sau cùng)
+2. Đăng ký xong -> phải đăng nhập lại mới vào được
+3. Chat bot:
++ Test thêm các case câu hỏi
++ UI: box chat ngang màn hình -> tối ưu UX
+4. 
+
+
+check db:
+
+
+ưu tiên:
+- vnpay
+- flight + hotel
+-REPORT
+- notification
+- râu ria

@@ -22,6 +22,7 @@ export interface Trip {
   currency: string;
   created_at: string;
   updated_at: string;
+  user_role?: string;
 }
 
 export type ItemType = 'ATTRACTION' | 'MEAL' | 'TRANSPORT' | 'LODGING';
@@ -34,6 +35,7 @@ export interface ActivityDetails {
   lng?: number;
   note?: string;
   estimated_cost?: number;
+  booking_link?: string;
 }
 
 export interface ItineraryItem {

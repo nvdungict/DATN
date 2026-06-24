@@ -1,0 +1,209 @@
+================================================================================
+        GIẢI THÍCH KIẾN TRÚC HỆ THỐNG - AI TRAVEL ASSISTANT
+        (Dành cho báo cáo & thuyết trình với giảng viên đồ án)
+================================================================================
+
+------------------------------------------------------------------------
+I. TỔNG QUAN HỆ THỐNG
+------------------------------------------------------------------------
+
+Dự án "AI Travel Assistant" là một nền tảng lập kế hoạch du lịch thông
+minh, sử dụng trí tuệ nhân tạo để tự động sinh lịch trình, tư vấn địa
+điểm và hỗ trợ người dùng qua hội thoại thời gian thực.
+
+Hệ thống được xây dựng theo kiến trúc Client–Server hiện đại, tách biệt
+hoàn toàn giữa giao diện người dùng (Frontend), logic nghiệp vụ (Backend)
+và lớp AI Agent. Sơ đồ kiến trúc mô tả luồng dữ liệu từ trình duyệt của
+người dùng đến cơ sở dữ liệu và các dịch vụ AI bên ngoài.
+
+------------------------------------------------------------------------
+II. GIẢI THÍCH TỪNG THÀNH PHẦN TRONG SƠ ĐỒ
+------------------------------------------------------------------------
+
+1. BROWSER (Next.js) — Giao diện người dùng
+----------------------------------------------
+- Công nghệ: Next.js 16, React 19, TailwindCSS 4
+- Đây là lớp giao diện mà người dùng tương tác trực tiếp.
+- Gồm các trang: Dashboard, Trip Detail (Timeline + Map), Profile,
+  Explore, và Guided Planner.
+- Giao tiếp với Backend theo 2 kênh song song:
+    + REST API (JWT): dùng cho các thao tác CRUD thông thường
+      (đăng nhập, tạo chuyến đi, xem lịch trình, xóa trip...)
+    + WebSocket (streaming): dùng riêng cho tính năng AI Chat,
+      cho phép nhận phản hồi từ AI theo từng token (streaming),
+      mang lại trải nghiệm "đánh máy real-time" như ChatGPT.
+
+2. REST API (JWT) — Xác thực & Truyền dữ liệu
+-----------------------------------------------
+- Mọi yêu cầu HTTP từ trình duyệt đều được gắn kèm JWT Token
+  trong header Authorization: Bearer <token>.
+- Backend xác minh token trước khi xử lý bất kỳ request nào.
+- Đảm bảo bảo mật: người dùng chưa đăng nhập không thể truy cập
+  dữ liệu của người khác.
+
+3. WebSocket (streaming) — Kênh AI Chat thời gian thực
+--------------------------------------------------------
+- Giao thức WebSocket duy trì kết nối hai chiều liên tục giữa
+  trình duyệt và server.
+- Khi người dùng gửi một câu hỏi vào AI Chat, server sẽ stream
+  từng đoạn token phản hồi ngay khi AI tạo ra, thay vì chờ đến
+  khi hoàn thành rồi mới gửi toàn bộ.
+- Điều này tạo ra cảm giác phản hồi tức thì, tăng trải nghiệm
+  người dùng đáng kể.
+
+4. FASTAPI (Python) — Backend Server / Lõi xử lý nghiệp vụ
+-------------------------------------------------------------
+FastAPI là framework Python hiệu năng cao, được dùng làm lớp trung
+gian xử lý toàn bộ logic nghiệp vụ. Bên trong FastAPI có 4 nhóm
+router chính:
+
+  a) Auth Routes → bcrypt + JWT
+     - Xử lý đăng ký, đăng nhập, lấy thông tin người dùng.
+     - Mật khẩu được mã hóa bằng bcrypt trước khi lưu vào DB.
+     - Sau khi đăng nhập thành công, server cấp JWT token cho client.
+
+  b) Trip Routes → CRUD + AI trigger
+     - Tạo, đọc, cập nhật, xóa các chuyến đi (Trip).
+     - Quan trọng: endpoint POST /trips/generate không chỉ lưu dữ
+       liệu mà còn kích hoạt (trigger) LangGraph Agent để AI tự
+       động sinh lịch trình hoàn chỉnh cho chuyến đi vừa tạo.
+
+  c) Itinerary Routes → confirm/complete
+     - Quản lý từng hoạt động trong lịch trình (ItineraryItem).
+     - Người dùng có thể "Confirm" (xác nhận) hoặc "Mark done"
+       (đánh dấu hoàn thành) từng hoạt động.
+     - Trạng thái: SUGGESTED → CONFIRMED → COMPLETED.
+
+  d) AI Chat Route → WebSocket stream
+     - Tiếp nhận tin nhắn từ người dùng qua WebSocket.
+     - Chuyển tin nhắn đến LangGraph Agent để xử lý.
+     - Stream từng token phản hồi từ AI về lại cho client.
+
+5. LANGGRAPH AGENT — Lõi AI / Agentic Reasoning
+-------------------------------------------------
+- LangGraph là thư viện xây dựng AI Agent dạng đồ thị (graph-based),
+  cho phép AI thực hiện chuỗi suy luận có kiểm soát thay vì chỉ
+  trả lời một lần.
+- Agent hoạt động theo pipeline gồm nhiều node:
+    + Understand: Phân tích ý định người dùng
+    + Decision:   Quyết định hành động (tạo trip, tìm kiếm, hỏi thêm)
+    + Retrieve:   Lấy thông tin từ vector memory (lịch sử, sở thích)
+    + Generate:   Gọi OpenAI GPT-4o để sinh nội dung
+    + Search:     Gọi Tavily để tìm thông tin thực tế trên web
+- Sau khi xử lý, Agent trả kết quả về FastAPI để lưu DB hoặc
+  stream về client.
+
+6. OPENAI API (GPT-4o) — Mô hình ngôn ngữ lớn
+------------------------------------------------
+- Agent gọi GPT-4o để:
+    + Sinh lịch trình chi tiết theo ngày (tên địa điểm, địa chỉ,
+      giờ, chi phí ước tính, ghi chú)
+    + Trả lời câu hỏi du lịch bằng ngôn ngữ tự nhiên
+    + Sửa đổi lịch trình theo yêu cầu của người dùng
+- Phản hồi được stream về theo từng token để tạo hiệu ứng real-time.
+
+7. TAVILY API (Web Search) — Tìm kiếm thực tế
+-----------------------------------------------
+- Khi Agent cần thông tin mới nhất (giá vé, giờ mở cửa, địa điểm
+  mới...) mà GPT-4o không chắc chắn, nó gọi Tavily để tìm kiếm
+  web theo thời gian thực.
+- Kết hợp LLM + web search giúp hệ thống tránh "hallucination"
+  (bịa đặt thông tin) — một vấn đề phổ biến với AI thuần túy.
+
+8. POSTGRESQL + PGVECTOR — Cơ sở dữ liệu
+------------------------------------------
+- PostgreSQL: Lưu toàn bộ dữ liệu dạng bảng:
+    + Bảng users: tài khoản, hồ sơ du lịch
+    + Bảng trips: thông tin chuyến đi
+    + Bảng itinerary_items: từng hoạt động trong lịch trình
+    + Bảng memory_streams: lịch sử hội thoại AI
+- pgvector: Extension của PostgreSQL, cho phép lưu trữ và tìm kiếm
+  vector embedding.
+  + Agent chuyển lịch sử hội thoại thành vector và lưu vào DB.
+  + Khi người dùng chat tiếp, Agent truy vấn vector để tìm các
+    thông tin liên quan từ quá khứ → AI "nhớ" được người dùng.
+  + Đây là nền tảng của tính năng "Long-term Memory" trong AI Agent.
+
+------------------------------------------------------------------------
+III. LUỒNG XỬ LÝ CHÍNH (Main Flow)
+------------------------------------------------------------------------
+
+=== Tạo chuyến đi bằng AI ===
+1. Người dùng nhập mô tả chuyến đi trên Dashboard
+2. Frontend gửi POST /trips/generate (REST, JWT)
+3. FastAPI tạo record Trip trong DB, sau đó kích hoạt LangGraph Agent
+4. Agent phân tích yêu cầu → gọi GPT-4o để sinh lịch trình
+5. GPT-4o trả về JSON có cấu trúc (danh sách ItineraryItem)
+6. FastAPI lưu các item vào bảng itinerary_items
+7. FastAPI trả về trip.id cho Frontend
+8. Frontend redirect đến trang /trips/{id} để xem lịch trình
+
+=== Chat với AI Assistant ===
+1. Người dùng mở trang /trips/{id}, kết nối WebSocket tự động
+2. Người dùng gõ câu hỏi/yêu cầu và nhấn Enter
+3. Frontend gửi message qua WebSocket
+4. FastAPI chuyển đến LangGraph Agent
+5. Agent truy xuất vector memory → hiểu ngữ cảnh → gọi GPT-4o
+6. GPT-4o stream từng token phản hồi ngược lại qua WebSocket
+7. Frontend hiển thị chữ xuất hiện dần từng ký tự (streaming effect)
+8. Nếu AI sửa đổi lịch trình, kết quả được lưu DB và giao diện
+   tự động cập nhật (reload itinerary)
+
+------------------------------------------------------------------------
+IV. ĐIỂM NỔI BẬT KỸ THUẬT (để thuyết trình)
+------------------------------------------------------------------------
+
+1. AGENTIC AI (AI có khả năng hành động):
+   Thay vì chỉ trả lời câu hỏi đơn giản, hệ thống dùng LangGraph
+   để xây dựng AI Agent có khả năng lên kế hoạch, tìm kiếm thông
+   tin, và thực thi nhiều bước liên tiếp — gần giống cách con người
+   ra quyết định.
+
+2. HYBRID MEMORY (Bộ nhớ kết hợp):
+   Kết hợp relational DB (PostgreSQL) cho dữ liệu có cấu trúc với
+   vector DB (pgvector) cho semantic memory — AI có thể "nhớ" sở
+   thích, lịch sử của từng người dùng.
+
+3. REAL-TIME STREAMING:
+   Dùng WebSocket thay vì HTTP polling, kết hợp với streaming API
+   của OpenAI, tạo ra trải nghiệm chat mượt mà như ChatGPT.
+
+4. SEPARATION OF CONCERNS:
+   Kiến trúc tách biệt rõ ràng: UI (Next.js) → API (FastAPI) →
+   AI Agent (LangGraph) → External Services (OpenAI, Tavily) →
+   Database (PostgreSQL). Mỗi lớp có trách nhiệm riêng, dễ bảo
+   trì và mở rộng.
+
+5. SECURITY:
+   - JWT authentication cho mọi REST request
+   - bcrypt hash cho mật khẩu (không lưu plaintext)
+   - WebSocket cũng yêu cầu token hợp lệ (code 1008 nếu unauthorized)
+
+------------------------------------------------------------------------
+V. CÔNG NGHỆ SỬ DỤNG (Tech Stack Summary)
+------------------------------------------------------------------------
+
+  Frontend:  Next.js 16, React 19, TypeScript, TailwindCSS 4
+  Backend:   FastAPI (Python), Pydantic, SQLAlchemy
+  AI:        LangGraph, LangChain, OpenAI GPT-4o, Tavily
+  Database:  PostgreSQL 16 + pgvector extension
+  Auth:      JWT (python-jose), bcrypt (passlib)
+  Realtime:  WebSocket (native FastAPI WebSocket support)
+  Deploy:    Docker Compose (frontend + backend + database)
+
+------------------------------------------------------------------------
+VI. KẾT LUẬN
+------------------------------------------------------------------------
+
+Kiến trúc này thể hiện một hệ thống AI hiện đại, đầy đủ tính năng:
+- Không chỉ là chatbot đơn giản mà là một Agentic AI System
+- Tích hợp đủ các thành phần: Auth, CRUD, AI Generation, Real-time
+  Communication, Vector Memory, và Web Search
+- Scalable: có thể mở rộng thêm tính năng (calendar, budget tracker,
+  multi-user collaboration) mà không ảnh hưởng các phần hiện có
+- Production-ready: Docker hóa toàn bộ, dễ deploy lên cloud
+
+================================================================================
+        Tài liệu này được sinh tự động dựa trên codebase thực tế của dự án
+        AI Travel Assistant (DATN) — 2026
+================================================================================
