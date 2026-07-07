@@ -1,7 +1,11 @@
 'use client';
 
+'use client';
+
+import type { ReactNode } from 'react';
+
 interface StatsCardProps {
-  icon: string;
+  icon: ReactNode;
   label: string;
   value: string | number;
   gradient: string;
@@ -24,7 +28,7 @@ export default function StatsCard({ icon, label, value, gradient, suffix }: Stat
             {suffix && <span className="text-slate-400 text-sm mb-1">{suffix}</span>}
           </div>
         </div>
-        <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-xl ${gradient} bg-opacity-20 border border-white/10`}>
+        <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-white ${gradient} bg-opacity-20 border border-white/10`}>
           {icon}
         </div>
       </div>

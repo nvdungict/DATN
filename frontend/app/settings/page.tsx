@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Settings as SettingsIcon, CreditCard, Sparkles, LogOut, Shield } from 'lucide-react';
 import { getMe, updateMe, changePassword } from '@/lib/api';
 import Sidebar from '@/components/Sidebar';
-import FloatingCopilot from '@/components/FloatingCopilot';
+
 import { getAppCurrency, setAppCurrency } from '@/lib/currency';
 
 const SETTINGS_TABS = [
@@ -403,7 +403,7 @@ function SettingsInner() {
           </div>
         </div>
       </div>
-      <FloatingCopilot />
+
     </div>
   );
 }

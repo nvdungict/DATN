@@ -24,7 +24,7 @@ export default function ToursPage() {
 
           {/* Header */}
           <div className="text-center space-y-4 mb-12">
-            <h1 className="text-4xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-violet-400">
+            <h1 className="font-heading text-4xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-emerald-400 drop-shadow-xl">
               Curated Escapes
             </h1>
             <p className="text-lg text-slate-400 max-w-2xl mx-auto">
@@ -52,9 +52,9 @@ export default function ToursPage() {
           {/* Tour Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {filteredTours.map(tour => (
-              <div key={tour.id} className="group flex flex-col bg-slate-900/50 backdrop-blur-sm border border-white/10 rounded-3xl overflow-hidden hover:border-indigo-500/30 hover:shadow-2xl hover:shadow-indigo-500/10 transition-all duration-300">
+              <div key={tour.id} className="group flex flex-col bg-white/[0.02] backdrop-blur-2xl border border-white/5 rounded-3xl overflow-hidden hover:border-indigo-500/30 hover:shadow-2xl hover:shadow-indigo-500/20 transition-all duration-500">
                 {/* Image */}
-                <div className="relative h-56 overflow-hidden">
+                <div className="relative aspect-video overflow-hidden">
                   <Image 
                     src={tour.cover_image} 
                     alt={tour.title} 
@@ -62,12 +62,12 @@ export default function ToursPage() {
                     sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                     className="object-cover transition-transform duration-700 group-hover:scale-110"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent" />
-                  <div className="absolute top-4 right-4 bg-black/50 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 text-xs font-bold text-white">
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#09090b] via-[#09090b]/40 to-transparent" />
+                  <div className="absolute top-4 right-4 bg-black/50 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 text-xs font-bold text-white shadow-lg">
                     {tour.category}
                   </div>
                   <div className="absolute bottom-4 left-4 right-4">
-                    <h3 className="text-2xl font-bold text-white leading-tight">{tour.title}</h3>
+                    <h3 className="font-heading text-2xl font-bold text-white leading-tight drop-shadow-md">{tour.title}</h3>
                   </div>
                 </div>
 

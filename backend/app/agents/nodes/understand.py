@@ -9,6 +9,8 @@ llm = ChatOpenAI(model=settings.OPENAI_MODEL, api_key=settings.OPENAI_API_KEY, t
 
 UNDERSTAND_PROMPT = """You are a travel assistant. Analyze the user's message and extract structured information.
 
+Current Date: {current_date}
+
 User message: {message}
 
 IMPORTANT RULES for intent classification:
@@ -42,7 +44,11 @@ Return ONLY valid JSON, no explanation, no markdown."""
 
 
 async def understand_node(state: AgentState) -> AgentState:
-    prompt = UNDERSTAND_PROMPT.format(message=state["user_message"])
+    from datetime import date
+    prompt = UNDERSTAND_PROMPT.format(
+        message=state["user_message"],
+        current_date=date.today().isoformat()
+    )
     response = await llm.ainvoke(prompt)
 
     content = response.content.strip()
@@ -54,7 +60,7 @@ async def understand_node(state: AgentState) -> AgentState:
     content = content.strip()
 
     try:
-        parsed = json.loads(content)
+        parsed = json.loads(content) or {}
     except json.JSONDecodeError:
         # Fallback: if message has location-like keywords, treat as CREATE_TRIP
         parsed = {
@@ -62,8 +68,8 @@ async def understand_node(state: AgentState) -> AgentState:
             "entities": {"location": state["user_message"], "num_days": 3, "preferences": [], "constraints": []},
         }
 
-    state["intent"] = parsed.get("intent", "CREATE_TRIP")
-    state["entities"] = parsed.get("entities", {})
+    state["intent"] = parsed.get("intent") or "CREATE_TRIP"
+    state["entities"] = parsed.get("entities") or {}
 
     # Ensure num_days has a default
     if not state["entities"].get("num_days"):

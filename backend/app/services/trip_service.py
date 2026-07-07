@@ -118,7 +118,16 @@ class TripService:
             .where(ItineraryItem.trip_id == trip_id)
             .order_by(ItineraryItem.day_number, ItineraryItem.start_time)
         )
-        return result.scalars().all()
+        items = result.scalars().all()
+        return sorted(
+            items,
+            key=lambda item: (
+                item.day_number,
+                (item.activity_details or {}).get("_sort_order", 9999),
+                item.start_time or datetime.min.time(),
+                item.id or 0,
+            ),
+        )
 
     async def create_itinerary_items(
         self, items: list[ItineraryItemCreate]
@@ -134,16 +143,13 @@ class TripService:
     async def update_itinerary_items(
         self, trip_id: int, items_data: list[dict]
     ) -> list[ItineraryItem]:
-        """Replace all itinerary items for a trip with new data."""
-        # Delete existing
-        existing = await self.get_itinerary(trip_id)
-        for item in existing:
-            await self.session.delete(item)
-
-        # Create new
+        """Update existing itinerary items or create new ones, deleting missing ones."""
+        existing = {item.id: item for item in await self.get_itinerary(trip_id)}
         new_items = []
+        
         for item_dict in items_data:
             item_dict["trip_id"] = trip_id
+            item_id = item_dict.get("id")
             
             # Convert string times to datetime.time to avoid asyncpg DataError
             for time_field in ["start_time", "end_time"]:
@@ -153,11 +159,28 @@ class TripService:
                         fmt = "%H:%M:%S" if val.count(":") == 2 else "%H:%M"
                         item_dict[time_field] = datetime.strptime(val, fmt).time()
                     except ValueError:
-                        pass
-
-            item = ItineraryItem(**item_dict)
-            self.session.add(item)
-            new_items.append(item)
+                        item_dict.pop(time_field, None)
+            
+            # Remove string timestamps so DB auto-handles them
+            item_dict.pop("created_at", None)
+            item_dict.pop("updated_at", None)
+            
+            if item_id and item_id in existing:
+                item = existing[item_id]
+                for k, v in item_dict.items():
+                    if hasattr(item, k) and k not in ("id", "created_at", "updated_at"):
+                        setattr(item, k, v)
+                new_items.append(item)
+                del existing[item_id]
+            else:
+                item_dict.pop("id", None)
+                item = ItineraryItem(**item_dict)
+                self.session.add(item)
+                new_items.append(item)
+                
+        # Delete items that were removed
+        for item in existing.values():
+            await self.session.delete(item)
 
         await self.session.commit()
         for item in new_items:

@@ -5,6 +5,7 @@ from sqlmodel import SQLModel, Field, Column, JSON
 
 class UserBase(SQLModel):
     email: str = Field(unique=True, index=True)
+    full_name: Optional[str] = Field(default=None)
 
 
 class User(UserBase, table=True):
@@ -30,6 +31,7 @@ class UserRead(UserBase):
 
 
 class UserUpdate(SQLModel):
+    full_name: Optional[str] = None
     travel_profile: Optional[dict] = None
 
 

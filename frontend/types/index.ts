@@ -25,7 +25,7 @@ export interface Trip {
   user_role?: string;
 }
 
-export type ItemType = 'ATTRACTION' | 'MEAL' | 'TRANSPORT' | 'LODGING';
+export type ItemType = 'ATTRACTION' | 'MEAL' | 'TRANSPORT' | 'LODGING' | 'OTHER';
 export type ItemStatus = 'SUGGESTED' | 'CONFIRMED' | 'COMPLETED';
 
 export interface ActivityDetails {
@@ -35,7 +35,19 @@ export interface ActivityDetails {
   lng?: number;
   note?: string;
   estimated_cost?: number;
+  currency?: string;
   booking_link?: string;
+  airline?: string;
+  flight_number?: string;
+  departure_airport?: string;
+  arrival_airport?: string;
+  departure_time?: string;
+  arrival_time?: string;
+  price?: number;
+  stars?: number;
+  rating?: number;
+  total_price?: number;
+  price_per_night?: number;
 }
 
 export interface ItineraryItem {
@@ -49,6 +61,59 @@ export interface ItineraryItem {
   status: ItemStatus;
   created_at: string;
   updated_at: string;
+}
+
+export interface WeatherDay {
+  date: string;
+  condition: string;
+  icon?: string;
+  code?: number;
+  max_temp_c?: number;
+  min_temp_c?: number;
+  avg_temp_c?: number;
+  chance_of_rain?: number;
+  total_precip_mm?: number;
+  max_wind_kph?: number;
+  uv?: number;
+}
+
+export interface WeatherAlert {
+  headline?: string;
+  severity?: string;
+  event?: string;
+  effective?: string;
+  expires?: string;
+  desc?: string;
+}
+
+export interface TripWeather {
+  configured: boolean;
+  unavailable?: boolean;
+  mode?: 'forecast' | 'future' | 'unavailable';
+  requested_start_date?: string;
+  requested_end_date?: string;
+  forecast_start_date?: string;
+  forecast_end_date?: string;
+  partial?: boolean;
+  coverage_note?: string;
+  location: string;
+  local_time?: string;
+  current?: {
+    temp_c?: number;
+    feelslike_c?: number;
+    condition?: string;
+    icon?: string;
+    humidity?: number;
+    wind_kph?: number;
+    uv?: number;
+    air_quality?: {
+      pm2_5?: number;
+      us_epa_index?: number;
+    };
+  };
+  days: WeatherDay[];
+  alerts: WeatherAlert[];
+  advice: string[];
 }
 
 export interface MemoryStream {

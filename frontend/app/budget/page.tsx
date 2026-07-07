@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { DollarSign, PieChart, TrendingUp, Wallet, ArrowUpRight, ArrowDownRight, MapPin, Calendar, CheckCircle2 } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import { getTrips, getTripItinerary } from '@/lib/api';
-import { formatCurrency, normalizeToVND } from '@/lib/currency';
+import { formatCurrency, normalizeToVND, extractItemCostInVND } from '@/lib/currency';
 
 export default function BudgetPage() {
   const [trips, setTrips] = useState<any[]>([]);
@@ -62,12 +62,8 @@ export default function BudgetPage() {
   };
 
   filteredItineraries.forEach(item => {
-    // Attempt to parse cost from activity details
     const details = item.activity_details || {};
-    let cost = 0;
-    if (details.cost !== undefined) cost = normalizeToVND(details.cost, item.trip?.currency);
-    else if (details.estimated_cost !== undefined) cost = normalizeToVND(details.estimated_cost, item.trip?.currency);
-    else if (details.price !== undefined) cost = normalizeToVND(details.price, item.trip?.currency);
+    const cost = extractItemCostInVND(details, item.trip?.currency);
 
     totalSpent += cost;
     const type = item.type || 'OTHER';
@@ -254,15 +250,7 @@ export default function BudgetPage() {
                   </h2>
                   
                   <div className="flex-1 overflow-y-auto pr-2 space-y-4 max-h-[500px] custom-scrollbar">
-                    {filteredItineraries.filter(item => {
-                      const details = item.activity_details || {};
-                      let cost = Number(details.cost || details.estimated_cost || details.price || 0);
-                      if (isNaN(cost) && typeof details.cost === 'string') {
-                        const match = details.cost.replace(/\\D/g, '').match(/\\d+/);
-                        if (match) cost = Number(match[0]);
-                      }
-                      return cost > 0;
-                    }).sort((a,b) => {
+                    {filteredItineraries.filter(item => extractItemCostInVND(item.activity_details, item.trip?.currency) > 0).sort((a,b) => {
                        // Group by type if a specific trip is selected, otherwise sort by date descending
                        if (selectedTripId !== 'all') {
                          return a.type.localeCompare(b.type);
@@ -270,10 +258,7 @@ export default function BudgetPage() {
                        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
                     }).map((item, index, arr) => {
                       const details = item.activity_details || {};
-                      let cost = 0;
-                      if (details.cost !== undefined) cost = normalizeToVND(details.cost, item.trip?.currency);
-                      else if (details.estimated_cost !== undefined) cost = normalizeToVND(details.estimated_cost, item.trip?.currency);
-                      else if (details.price !== undefined) cost = normalizeToVND(details.price, item.trip?.currency);
+                      const costVND = extractItemCostInVND(details, item.trip?.currency);
                       
                       const showCategoryHeader = selectedTripId !== 'all' && (index === 0 || item.type !== arr[index-1].type);
 
@@ -299,7 +284,7 @@ export default function BudgetPage() {
                               )}
                             </div>
                             <div className="font-semibold text-white text-sm whitespace-nowrap">
-                              {formatCurrency(cost, 'VND')}
+                              {formatCurrency(costVND, 'VND')}
                             </div>
                           </div>
                         </div>

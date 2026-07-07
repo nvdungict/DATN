@@ -8,6 +8,14 @@ async def retrieve_node(state: AgentState, session: AsyncSession) -> AgentState:
     user_id = state["user_id"]
     trip_id = state.get("trip_id")
 
+    # Retrieve user profile
+    from app.models.user import User
+    from sqlmodel import select
+    user_result = await session.execute(select(User).where(User.id == user_id))
+    user = user_result.scalar_one_or_none()
+    if user and user.travel_profile:
+        state["user_profile"] = user.travel_profile
+
     # Retrieve trip
     if trip_id:
         from app.models.trip import Trip

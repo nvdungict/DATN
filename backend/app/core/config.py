@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # Tavily
     TAVILY_API_KEY: str = ""
 
+    # WeatherAPI.com
+    WEATHERAPI_KEY: str = ""
+
     # Email (SMTP)
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587

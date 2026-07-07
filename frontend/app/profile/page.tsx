@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Shield, User as UserIcon } from 'lucide-react';
 import { getMe, updateMe } from '@/lib/api';
 import Sidebar from '@/components/Sidebar';
-import FloatingCopilot from '@/components/FloatingCopilot';
+
 
 function ProfileInner() {
   const router = useRouter();
@@ -28,7 +28,7 @@ function ProfileInner() {
       const data = await getMe() as any;
       setUser(data);
       setFields({
-        name: data.travel_profile?.name || data.email?.split('@')[0] || '',
+        name: data.full_name || data.travel_profile?.name || data.email?.split('@')[0] || '',
         phone: data.travel_profile?.phone || '',
       });
     } catch {
@@ -42,8 +42,10 @@ function ProfileInner() {
     e.preventDefault();
     setSaving(true); setError(''); setSuccess(false);
     try {
-      const profileToSave = { ...user?.travel_profile, phone: fields.phone, name: fields.name };
-      const updated = await updateMe(profileToSave);
+      const profileToSave = { ...user?.travel_profile, phone: fields.phone };
+      // Optional: remove name from travel_profile to migrate it cleanly
+      delete profileToSave.name;
+      const updated = await updateMe(profileToSave, fields.name);
       setUser(updated);
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
@@ -159,7 +161,7 @@ function ProfileInner() {
           </div>
         </div>
       </div>
-      <FloatingCopilot />
+
     </div>
   );
 }

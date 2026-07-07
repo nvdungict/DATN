@@ -75,12 +75,12 @@ async def run_agent(
     final_state = await compiled.ainvoke(initial_state)
 
     return {
-        "action": final_state.get("intent", "ASK_INFO"),
+        "action": final_state.get("intent") or "ASK_INFO",
         "trip": final_state.get("trip_data"),
-        "itinerary_items": final_state.get("itinerary_items", []),
-        "conflicts": final_state.get("conflicts", []),
-        "messages": final_state.get("messages", []),
-        "booking_results": final_state.get("booking_results", []),
+        "itinerary_items": final_state.get("itinerary_items") or [],
+        "conflicts": final_state.get("conflicts") or [],
+        "messages": final_state.get("messages") or [],
+        "booking_results": final_state.get("booking_results") or [],
     }
 
 
@@ -127,16 +127,16 @@ async def run_agent_streaming(
                         "metadata": {"node": "info"},
                     }
             elif node_name in FINALIZE_NODES:
-                messages = node_output.get("messages", [])
+                messages = node_output.get("messages") or []
                 yield {
                     "type": "final",
                     "content": messages[0]["content"] if messages else "Done!",
                     "metadata": {
                         "action": node_output.get("intent"),
                         "trip": node_output.get("trip_data"),
-                        "itinerary_items": node_output.get("itinerary_items", []),
-                        "conflicts": node_output.get("conflicts", []),
-                        "booking_results": node_output.get("booking_results", []),
+                        "itinerary_items": node_output.get("itinerary_items") or [],
+                        "conflicts": node_output.get("conflicts") or [],
+                        "booking_results": node_output.get("booking_results") or [],
                     },
                 }
 
@@ -149,6 +149,7 @@ def _make_initial_state(user_message: str, user_id: int, trip_id: int | None) ->
         "intent": "",
         "entities": {},
         "existing_trip": None,
+        "user_profile": None,
         "memory_context": [],
         "search_results": [],
         "trip_data": None,
@@ -159,4 +160,5 @@ def _make_initial_state(user_message: str, user_id: int, trip_id: int | None) ->
         "agent_type": "",
         "booking_params": {},
         "booking_results": [],
+        "weather_context": {},
     }

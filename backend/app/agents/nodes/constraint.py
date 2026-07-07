@@ -24,7 +24,7 @@ def _times_overlap(
 
 async def constraint_node(state: AgentState) -> AgentState:
     """Check itinerary for constraint violations: time overlaps and budget."""
-    items = state.get("itinerary_items", [])
+    items = state.get("itinerary_items") or []
     trip = state.get("trip_data") or state.get("existing_trip") or {}
     total_budget = float(trip.get("total_budget") or float("inf"))
     conflicts: list[dict] = []
@@ -32,6 +32,8 @@ async def constraint_node(state: AgentState) -> AgentState:
     # Group by day
     days: dict[int, list[dict]] = {}
     for item in items:
+        if not item:
+            continue
         day = item.get("day_number", 1)
         days.setdefault(day, []).append(item)
 

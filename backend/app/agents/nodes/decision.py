@@ -3,7 +3,7 @@ from app.agents.state import AgentState
 
 def decision_node(state: AgentState) -> AgentState:
     """Pure routing node: sets next_node based on intent."""
-    intent = state.get("intent", "ASK_INFO")
+    intent = state.get("intent") or "ASK_INFO"
     trip_id = state.get("trip_id")
 
     if intent == "CREATE_TRIP" and not trip_id:
@@ -23,4 +23,4 @@ def decision_node(state: AgentState) -> AgentState:
 
 def route_after_decision(state: AgentState) -> str:
     """LangGraph conditional edge function."""
-    return state.get("next_node", "search")
+    return state.get("next_node") or "search"

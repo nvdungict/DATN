@@ -27,7 +27,7 @@ def _parse_time(t: str | None) -> dt_time | None:
 
 async def finalize_node(state: AgentState, session: AsyncSession) -> AgentState:
     """Persist trip + itinerary to DB, save memory, build final response."""
-    intent = state.get("intent", "ASK_INFO")
+    intent = state.get("intent") or "ASK_INFO"
     svc = TripService(session)
     user_id = state["user_id"]
 
@@ -56,15 +56,57 @@ async def finalize_node(state: AgentState, session: AsyncSession) -> AgentState:
                 existing = await svc.get_trip(trip_id, user_id)
                 if existing:
                     saved_trip = existing
-                    await svc.update_itinerary_items(
-                        trip_id, state.get("itinerary_items", [])
-                    )
                     state["trip_data"] = {**trip_data, "id": trip_id}
 
-        # Save itinerary items
+        # --- Geocode addresses using Nominatim before saving ---
+        items_to_save = state.get("itinerary_items") or []
+        if items_to_save:
+            import asyncio
+            from geopy.geocoders import Nominatim
+            
+            # Init geolocator (must define custom user_agent)
+            geolocator = Nominatim(user_agent="datn_travel_planner_bot")
+            
+            for item in items_to_save:
+                if not item or item.get("type") in ("TRANSPORT", "OTHER"):
+                    continue
+                details = item.get("activity_details", {})
+                
+                # If LLM already gave coordinates, maybe trust them? Actually LLM hallucinates them.
+                # So we overwrite them based on the address or name.
+                search_query = details.get("address") or details.get("name")
+                if not search_query:
+                    continue
+                
+                try:
+                    # Run blocking geopy call in a thread
+                    location = await asyncio.to_thread(geolocator.geocode, search_query, timeout=5)
+                    if location:
+                        details["lat"] = location.latitude
+                        details["lng"] = location.longitude
+                        print(f"Geocoded: {search_query} -> {location.latitude}, {location.longitude}")
+                    else:
+                        print(f"Could not geocode: {search_query}")
+                except Exception as e:
+                    print(f"Geocoding error for {search_query}: {e}")
+                
+                # Sleep to respect Nominatim's strict 1 request/sec limit
+                await asyncio.sleep(1.1)
+
+        # Save itinerary items for MODIFY_TRIP
+        if saved_trip and intent == "MODIFY_TRIP":
+            trip_id = state.get("trip_id")
+            if trip_id:
+                await svc.update_itinerary_items(
+                    trip_id, items_to_save
+                )
+
+        # Save itinerary items for CREATE_TRIP
         if saved_trip and intent == "CREATE_TRIP":
             trip_id = saved_trip.id
-            for item_dict in state.get("itinerary_items", []):
+            for item_dict in items_to_save:
+                if not item_dict:
+                    continue
                 try:
                     item_create = ItineraryItemCreate(
                         trip_id=trip_id,

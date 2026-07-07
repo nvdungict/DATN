@@ -11,9 +11,11 @@ def _extract_trip_context(state: AgentState) -> dict:
         context["destination"] = existing_trip.get("destination", "")
 
     # Look for lodging items to find hotel name/address
-    items = state.get("itinerary_items", [])
+    items = state.get("itinerary_items") or []
     lodging_names = []
     for item in items:
+        if not item:
+            continue
         if item.get("type") == "LODGING":
             details = item.get("activity_details", {})
             name = details.get("name", "")
@@ -30,9 +32,9 @@ def _extract_trip_context(state: AgentState) -> dict:
 
 async def search_node(state: AgentState) -> AgentState:
     """Use external search (Tavily) to find place information."""
-    entities = state.get("entities", {})
+    entities = state.get("entities") or {}
     location = entities.get("location", "")
-    intent = state.get("intent", "")
+    intent = state.get("intent") or ""
     user_message = state["user_message"]
 
     # Get trip context (destination + hotel) if available from retrieve_node
@@ -94,8 +96,31 @@ async def search_node(state: AgentState) -> AgentState:
             start_date_str = entities.get("start_date") or str(date.today() + timedelta(days=7))
             end_date_str = entities.get("end_date") or str(date.today() + timedelta(days=10))
             
-            # Fetch flights from Travelport
-            flight_offers = await travelport.search_flights("HAN", "DAD" if "Đà Nẵng" in destination else "SGN", start_date_str, 1)
+            def get_airport(loc):
+                loc = (loc or "").lower()
+                if "hà nội" in loc or "hanoi" in loc: return "HAN"
+                if "hồ chí minh" in loc or "ho chi minh" in loc or "sài gòn" in loc or "saigon" in loc: return "SGN"
+                if "đà nẵng" in loc or "da nang" in loc: return "DAD"
+                if "nha trang" in loc: return "CXR"
+                if "phú quốc" in loc or "phu quoc" in loc: return "PQC"
+                if "đà lạt" in loc or "da lat" in loc: return "DLI"
+                if "huế" in loc or "hue" in loc: return "HUI"
+                if "hải phòng" in loc or "hai phong" in loc: return "HPH"
+                return None
+                
+            origin = entities.get("origin_airport")
+            if not origin:
+                # Try to extract from user message
+                if "hà nội" in user_message.lower() and ("từ" in user_message.lower() or "xuất phát" in user_message.lower()): origin = "HAN"
+                elif "sài gòn" in user_message.lower() or "hồ chí minh" in user_message.lower(): origin = "SGN"
+                else: origin = "HAN" # Fallback default
+                
+            dest_airport = get_airport(destination)
+            
+            flight_offers = []
+            # Only search flights if destination has an airport and it's different from origin
+            if dest_airport and origin != dest_airport:
+                flight_offers = await travelport.search_flights(origin, dest_airport, start_date_str, 1)
             
             # Fetch hotels from Booking.com (RapidAPI)
             hotel_offers = await booking_com.search_hotels(destination, start_date_str, end_date_str, 1)

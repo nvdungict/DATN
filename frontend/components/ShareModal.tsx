@@ -11,7 +11,7 @@ export default function ShareModal({ tripId, onClose }: { tripId: number, onClos
   const fetchCollabs = async () => {
     try {
       const data = await getCollaborators(tripId);
-      setCollabs(data);
+      setCollabs(data as any[]);
     } catch (e) {
       console.error(e);
     }

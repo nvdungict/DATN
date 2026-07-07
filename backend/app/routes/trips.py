@@ -12,6 +12,7 @@ from app.models.trip import TripCreate, TripRead, TripUpdate, TripCollaborator, 
 from app.models.itinerary import ItineraryItemRead, ItineraryItemCreate, ItemType, ItemStatus
 from app.models.notification import Notification
 from app.services.trip_service import TripService
+from app.services.weather_service import WeatherAPIClient
 from app.agents.graph import run_agent
 
 router = APIRouter(prefix="/trips", tags=["trips"])
@@ -69,6 +70,22 @@ async def get_itinerary(
     return await svc.get_itinerary(trip_id)
 
 
+@router.get("/{trip_id}/weather")
+async def get_trip_weather(
+    trip_id: int,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    svc = TripService(session)
+    trip = await svc.get_trip(trip_id, current_user.id)
+    if not trip:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
+
+    itinerary_items = await svc.get_itinerary(trip_id)
+    weather = WeatherAPIClient()
+    return await weather.get_trip_weather(trip, itinerary_items)
+
+
 @router.patch("/{trip_id}/itinerary")
 async def update_itinerary(
     trip_id: int,
@@ -121,6 +138,66 @@ async def generate_trip(
         await manager.broadcast_to_trip(trip_id, {"type": "REFRESH_ITINERARY"})
         
     return result
+
+
+@router.get("/{trip_id}/items/{item_id}/alternatives")
+async def get_item_alternatives(
+    trip_id: int,
+    item_id: int,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    from app.services.trip_service import TripService
+    from app.services.travelport_service import TravelportClient
+    from app.services.booking_com_service import BookingComClient
+    from app.models.itinerary import ItineraryItem, ItemType
+    from datetime import date, timedelta
+    
+    svc = TripService(session)
+    trip = await svc.get_trip(trip_id, current_user.id)
+    if not trip:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
+        
+    query = select(ItineraryItem).where(
+        ItineraryItem.id == item_id,
+        ItineraryItem.trip_id == trip_id
+    )
+    result = await session.execute(query)
+    item = result.scalar_one_or_none()
+    
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+        
+    details = item.activity_details or {}
+    
+    if item.type == ItemType.TRANSPORT and ("flight" in details.get("deep_link", "").lower() or "vj" in details.get("id", "").lower() or "flight" in details.get("name", "").lower() or "travelport" in details.get("deep_link", "").lower() or "viet" in details.get("airline", "").lower()):
+        origin = details.get("departure_airport") or "HAN"
+        destination = details.get("arrival_airport") or ("DAD" if "Đà Nẵng" in trip.destination else "SGN")
+        
+        try:
+            target_date = (date.fromisoformat(trip.start_date) + timedelta(days=item.day_number - 1)).isoformat()
+        except:
+            target_date = str(date.today() + timedelta(days=7))
+            
+        travelport = TravelportClient()
+        flights = await travelport.search_flights(origin, destination, target_date, 1)
+        return {"type": "FLIGHT", "options": flights}
+        
+    elif item.type == ItemType.LODGING:
+        location = trip.destination
+        try:
+            checkin = str(date.fromisoformat(trip.start_date))
+            checkout = str(date.fromisoformat(trip.end_date))
+        except:
+            checkin = str(date.today() + timedelta(days=7))
+            checkout = str(date.today() + timedelta(days=10))
+            
+        booking_com = BookingComClient()
+        hotels = await booking_com.search_hotels(location, checkin, checkout, 1)
+        return {"type": "HOTEL", "options": hotels}
+        
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Can only find alternatives for Flights and Hotels")
 
 
 @router.delete("/{trip_id}", status_code=status.HTTP_204_NO_CONTENT)

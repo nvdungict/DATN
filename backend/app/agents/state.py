@@ -13,6 +13,7 @@ class AgentState(TypedDict):
 
     # Retrieved data
     existing_trip: Optional[dict]
+    user_profile: Optional[dict]
     memory_context: list[str]
     search_results: list[dict]
 
@@ -38,3 +39,6 @@ class AgentState(TypedDict):
     
     # Proactive GDS Synchronization
     gds_offers: dict # {"flights": [], "hotels": []}
+
+    # Weather-aware planning
+    weather_context: dict

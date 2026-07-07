@@ -28,6 +28,7 @@ async def register(user_in: UserCreate, session: AsyncSession = Depends(get_sess
     user = User(
         email=user_in.email,
         hashed_password=hash_password(user_in.password),
+        full_name=user_in.full_name,
         travel_profile=user_in.travel_profile,
     )
     session.add(user)
@@ -70,6 +71,8 @@ async def update_me(
 ):
     if update_data.travel_profile is not None:
         current_user.travel_profile = update_data.travel_profile
+    if update_data.full_name is not None:
+        current_user.full_name = update_data.full_name
     session.add(current_user)
     await session.commit()
     await session.refresh(current_user)

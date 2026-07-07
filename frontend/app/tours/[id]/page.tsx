@@ -27,7 +27,7 @@ export default function TourDetailPage({ params }: { params: Promise<{ id: strin
     if (!tour) return;
     setIsCloning(true);
     try {
-      const newTrip = await clonePremadeTour(tour);
+      const newTrip = (await clonePremadeTour(tour)) as any;
       // Redirect to the newly created trip dashboard
       router.push(`/trips/${newTrip.id}`);
     } catch (err) {
@@ -41,7 +41,7 @@ export default function TourDetailPage({ params }: { params: Promise<{ id: strin
     if (!tour) return;
     setIsCloning(true);
     try {
-      const newTrip = await clonePremadeTour(tour);
+      const newTrip = (await clonePremadeTour(tour)) as any;
       const prompt = `I want to customize this tour. Here is what I want to modify: `;
       router.push(`/trips/${newTrip.id}?auto_prompt=${encodeURIComponent(prompt)}`);
     } catch (err) {

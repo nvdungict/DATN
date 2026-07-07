@@ -7,6 +7,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.agents.state import AgentState
 from app.agents.nodes.retrieve import retrieve_node
 from app.agents.nodes.search import search_node
+from app.agents.nodes.weather import weather_context_node
 from app.agents.nodes.plan import plan_node
 from app.agents.nodes.constraint import constraint_node
 from app.agents.nodes.finalize import finalize_node
@@ -32,6 +33,7 @@ def build_planning_graph(session: AsyncSession) -> StateGraph:
     graph.add_node("planning_entry", planning_entry_node)
     graph.add_node("retrieve", _retrieve)
     graph.add_node("search", search_node)
+    graph.add_node("weather_context", weather_context_node)
     graph.add_node("plan", plan_node)
     graph.add_node("constraint", constraint_node)
     graph.add_node("finalize", _finalize)
@@ -45,11 +47,11 @@ def build_planning_graph(session: AsyncSession) -> StateGraph:
         {"search": "search", "retrieve": "retrieve"},
     )
 
-    # retrieve → plan (MODIFY path skips search)
-    graph.add_edge("retrieve", "plan")
+    # retrieve/search → weather_context → plan
+    graph.add_edge("retrieve", "weather_context")
 
-    # search → plan
-    graph.add_edge("search", "plan")
+    graph.add_edge("search", "weather_context")
+    graph.add_edge("weather_context", "plan")
 
     # plan → constraint → finalize
     graph.add_edge("plan", "constraint")

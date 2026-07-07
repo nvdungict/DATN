@@ -33,7 +33,7 @@ async def answer_node(state: AgentState) -> AgentState:
     search → answer → finalize (skipping plan + constraint).
     """
     search_summary = "\n".join(
-        [r.get("content", r.get("message", ""))[:300] for r in state.get("search_results", [])]
+        [r.get("content", r.get("message", ""))[:300] for r in (state.get("search_results") or [])]
     )
 
     if not search_summary.strip():

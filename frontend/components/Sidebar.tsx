@@ -2,18 +2,29 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
-import { MoreHorizontal, Trash2 } from 'lucide-react';
+import {
+  BarChart3,
+  Bot,
+  CalendarDays,
+  Compass,
+  LayoutDashboard,
+  Map,
+  MoreHorizontal,
+  Settings,
+  Sparkles,
+  Trash2,
+} from 'lucide-react';
 import NotificationBell from './NotificationBell';
 
 const NAV_ITEMS = [
-  { href: '/dashboard', label: 'Dashboard' },
-  { href: '/dashboard?tab=ai', label: 'AI Planner' },
-  { href: '/dashboard?tab=guided', label: 'Guided Planner' },
-  { href: '/explore', label: 'Explore' },
-  { href: '/tours', label: 'Tours' },
-  { href: '/calendar', label: 'Calendar' },
-  { href: '/budget', label: 'Budget' },
-  { href: '/settings', label: 'Settings' },
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/dashboard?tab=ai', label: 'AI Planner', icon: Bot },
+  { href: '/dashboard?tab=guided', label: 'Guided Planner', icon: Map },
+  { href: '/explore', label: 'Explore', icon: Compass },
+  { href: '/tours', label: 'Tours', icon: Sparkles },
+  { href: '/calendar', label: 'Calendar', icon: CalendarDays },
+  { href: '/budget', label: 'Budget', icon: BarChart3 },
+  { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
 interface SidebarProps {
@@ -39,7 +50,7 @@ export default function Sidebar({ recentTrips = [], onDeleteTrip }: SidebarProps
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center text-lg shadow-lg shadow-indigo-500/30">
             ✈️
           </div>
-          <span className="text-white font-bold text-lg group-hover:text-indigo-300 transition">TravelAI</span>
+          <span className="font-heading text-white font-bold text-xl tracking-tight group-hover:text-indigo-300 transition">TravelAI</span>
         </Link>
         <NotificationBell />
       </div>
@@ -47,23 +58,27 @@ export default function Sidebar({ recentTrips = [], onDeleteTrip }: SidebarProps
       {/* Nav items */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         <p className="text-slate-600 text-xs uppercase tracking-widest px-3 mb-3 font-medium">Navigation</p>
-        {NAV_ITEMS.map(item => (
-          <Link
-            key={item.label}
-            href={item.href}
-            onClick={() => setMobileOpen(false)}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-              isActive(item.href)
-                ? 'bg-indigo-600/20 text-white border border-indigo-500/30'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <span>{item.label}</span>
-            {isActive(item.href) && (
-              <div className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-400" />
-            )}
-          </Link>
-        ))}
+        {NAV_ITEMS.map(item => {
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.label}
+              href={item.href}
+              onClick={() => setMobileOpen(false)}
+              className={`group relative flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-300 ${
+                isActive(item.href)
+                  ? 'bg-gradient-to-r from-indigo-500/15 to-transparent text-white'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              {isActive(item.href) && (
+                <div className="absolute left-0 top-2 bottom-2 w-1 bg-indigo-500 rounded-r-full shadow-[0_0_10px_rgba(99,102,241,0.5)]" />
+              )}
+              <Icon className="relative z-10 h-4 w-4 flex-none" />
+              <span className="relative z-10">{item.label}</span>
+            </Link>
+          );
+        })}
 
         {/* Recent trips */}
         {recentTrips.length > 0 && (
@@ -79,7 +94,7 @@ export default function Sidebar({ recentTrips = [], onDeleteTrip }: SidebarProps
                   <div className="w-1.5 h-1.5 rounded-full bg-indigo-500/50 flex-shrink-0" />
                   <div className="min-w-0">
                     <p className="truncate font-medium text-slate-300">{trip.title}</p>
-                    <p className="text-xs text-slate-600 truncate">📍 {trip.destination}</p>
+                    <p className="text-xs text-slate-600 truncate">{trip.destination}</p>
                   </div>
                 </Link>
 
@@ -151,7 +166,7 @@ export default function Sidebar({ recentTrips = [], onDeleteTrip }: SidebarProps
         <div className="lg:hidden fixed inset-0 z-50 flex">
           <div className="w-64 bg-slate-950 border-r border-white/10 h-full">
             <div className="flex items-center justify-between px-6 py-5 border-b border-white/8">
-              <span className="text-white font-bold text-lg">TravelAI</span>
+              <span className="font-heading text-white font-bold text-xl tracking-tight">TravelAI</span>
               <button onClick={() => setMobileOpen(false)} className="text-slate-400 hover:text-white text-xl">
                 ×
               </button>

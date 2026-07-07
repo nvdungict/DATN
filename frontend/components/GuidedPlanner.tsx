@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { Loader2 } from 'lucide-react';
 
 const POPULAR_DESTINATIONS = [
   'Da Lat', 'Da Nang', 'Hoi An', 'Nha Trang', 'Phu Quoc', 'Tokyo', 'Singapore',
@@ -32,6 +33,7 @@ interface GuidedPlannerProps {
 }
 
 export default function GuidedPlanner({ onGenerate, generating, prefillDestination }: GuidedPlannerProps) {
+  const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState(prefillDestination || '');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [startDate, setStartDate] = useState('');
@@ -68,7 +70,7 @@ export default function GuidedPlanner({ onGenerate, generating, prefillDestinati
       ? `from ${startDate} to ${endDate}`
       : `for ${days} days`;
 
-    return `Create a detailed ${days}-day itinerary for a ${travelers.toLowerCase()} visiting ${destination} ${dateStr}.
+    return `Create a detailed ${days}-day itinerary for a ${travelers.toLowerCase()} visiting ${destination}, departing from ${origin || 'the current location'} ${dateStr}.
 Budget level: ${budgetStr}.
 Interests include: ${interestStr}.
 Travel pace should be: ${pace}.
@@ -83,6 +85,7 @@ Include:
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    if (!origin.trim()) { setError('Please enter an origin.'); return; }
     if (!destination.trim()) { setError('Please enter a destination.'); return; }
     if (!startDate || !endDate) { setError('Please select travel dates.'); return; }
     if (new Date(endDate) <= new Date(startDate)) { setError('End date must be after start date.'); return; }
@@ -91,38 +94,53 @@ Include:
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
-      {/* Destination */}
-      <div className="relative">
-        <label className="block text-slate-300 text-sm font-medium mb-2">
-          📍 Destination <span className="text-red-400">*</span>
-        </label>
-        <input
-          type="text"
-          value={destination}
-          onChange={e => { setDestination(e.target.value); setShowSuggestions(true); }}
-          onFocus={() => setShowSuggestions(true)}
-          onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-          placeholder="Where do you want to go?"
-          className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition"
-        />
-        {showSuggestions && filteredSuggestions.length > 0 && (
-          <div className="absolute z-20 top-full mt-1 w-full bg-slate-800 border border-white/10 rounded-xl overflow-hidden shadow-xl">
-            {filteredSuggestions.slice(0, 6).map(d => (
-              <button
-                key={d}
-                type="button"
-                onMouseDown={() => { setDestination(d); setShowSuggestions(false); }}
-                className="w-full text-left px-4 py-2.5 text-sm text-slate-200 hover:bg-indigo-600/30 hover:text-white transition"
-              >
-                📍 {d}
-              </button>
-            ))}
-          </div>
-        )}
+      {/* Origin & Destination */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label className="block text-slate-300 text-sm font-medium mb-2">
+            🛫 Departure City <span className="text-red-400">*</span>
+          </label>
+          <input
+            type="text"
+            value={origin}
+            onChange={e => setOrigin(e.target.value)}
+            placeholder="e.g. Hanoi, Ho Chi Minh..."
+            className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition"
+          />
+        </div>
+        
+        <div className="relative">
+          <label className="block text-slate-300 text-sm font-medium mb-2">
+            📍 Destination <span className="text-red-400">*</span>
+          </label>
+          <input
+            type="text"
+            value={destination}
+            onChange={e => { setDestination(e.target.value); setShowSuggestions(true); }}
+            onFocus={() => setShowSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+            placeholder="Where do you want to go?"
+            className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition"
+          />
+          {showSuggestions && filteredSuggestions.length > 0 && (
+            <div className="absolute z-20 top-full mt-1 w-full bg-slate-800 border border-white/10 rounded-xl overflow-hidden shadow-xl">
+              {filteredSuggestions.slice(0, 6).map(d => (
+                <button
+                  key={d}
+                  type="button"
+                  onMouseDown={() => { setDestination(d); setShowSuggestions(false); }}
+                  className="w-full text-left px-4 py-2.5 text-sm text-slate-200 hover:bg-indigo-600/30 hover:text-white transition"
+                >
+                  📍 {d}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Travel Dates */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="block text-slate-300 text-sm font-medium mb-2">
             📅 Start Date <span className="text-red-400">*</span>
@@ -265,9 +283,18 @@ Include:
       <button
         type="submit"
         disabled={generating}
-        className="w-full py-4 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold text-base disabled:opacity-50 transition-all duration-200 shadow-lg shadow-indigo-500/25"
+        className={`w-full py-4 rounded-xl text-white font-semibold text-base transition-all duration-300 shadow-lg ${
+          generating
+            ? 'bg-indigo-500/50 cursor-not-allowed shadow-none'
+            : 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 hover:-translate-y-0.5 shadow-indigo-500/25'
+        }`}
       >
-        {generating ? '✨ AI is planning your trip...' : '🚀 Generate My Trip'}
+        {generating ? (
+          <span className="flex items-center gap-2 justify-center">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            ✨ AI is planning your trip...
+          </span>
+        ) : '🚀 Generate My Trip'}
       </button>
 
       {getDays() > 0 && destination && (

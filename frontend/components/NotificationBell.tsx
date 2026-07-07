@@ -11,7 +11,7 @@ export default function NotificationBell() {
   const fetchNotifs = async () => {
     try {
       const data = await getNotifications();
-      setNotifications(data);
+      setNotifications(data as any[]);
     } catch (e) {
       console.error(e);
     }

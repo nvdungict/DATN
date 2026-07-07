@@ -2,17 +2,19 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { getTrip, getTripItinerary } from '@/lib/api';
-import type { Trip, ItineraryItem } from '@/types';
+import { getTrip, getTripItinerary, getTripWeather } from '@/lib/api';
+import type { Trip, ItineraryItem, TripWeather } from '@/types';
 import dynamic from 'next/dynamic';
 import ChatInterface from '@/components/ChatInterface';
 import DeleteConfirmModal from '@/components/DeleteConfirmModal';
 import ShareModal from '@/components/ShareModal';
 import { formatCurrency } from '@/lib/currency';
-import { Settings, Trash2, Users } from 'lucide-react';
+import { Bot, CircleDollarSign, CloudSun, Map, Route, Trash2, Users } from 'lucide-react';
 
 const Dashboard = dynamic(() => import('@/components/Dashboard'), { ssr: false });
 const InteractiveMap = dynamic(() => import('@/components/InteractiveMap'), { ssr: false });
+const TripBudget = dynamic(() => import('@/components/TripBudget'), { ssr: false });
+const WeatherInsight = dynamic(() => import('@/components/WeatherInsight'), { ssr: false });
 
 const statusColors: Record<string, string> = {
   PLANNED:   'text-blue-400 bg-blue-500/10 border-blue-500/25',
@@ -27,6 +29,15 @@ function formatDate(d: string) {
   } catch { return d; }
 }
 
+function isReviewableItem(item: ItineraryItem) {
+  const name = item.activity_details?.name?.toLowerCase() || '';
+  return (
+    item.type !== 'OTHER' &&
+    !name.includes('local transport') &&
+    !name.includes('chi phí đi lại')
+  );
+}
+
 export default function TripDetailPage() {
   const params  = useParams();
   const searchParams = useSearchParams();
@@ -36,9 +47,11 @@ export default function TripDetailPage() {
 
   const [trip, setTrip]           = useState<Trip | null>(null);
   const [items, setItems]         = useState<ItineraryItem[]>([]);
+  const [weather, setWeather]     = useState<TripWeather | null>(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
   const [loading, setLoading]     = useState(true);
-  const [activeTab, setActiveTab] = useState<'timeline' | 'map'>('timeline');
-  const [chatOpen, setChatOpen]   = useState(true);
+  const [activeTab, setActiveTab] = useState<'timeline' | 'map' | 'weather' | 'budget'>('timeline');
+  const [chatOpen, setChatOpen]   = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
@@ -80,13 +93,19 @@ export default function TripDetailPage() {
 
   async function loadData() {
     try {
+      setWeatherLoading(true);
       const [tripData, itemsData] = await Promise.all([
         getTrip(tripId) as Promise<Trip>,
         getTripItinerary(tripId) as Promise<ItineraryItem[]>,
       ]);
       setTrip(tripData);
       setItems(itemsData);
+      getTripWeather(tripId)
+        .then((data) => setWeather(data as TripWeather))
+        .catch(() => setWeather(null))
+        .finally(() => setWeatherLoading(false));
     } catch {
+      setWeatherLoading(false);
       router.push('/dashboard');
     } finally {
       setLoading(false);
@@ -117,9 +136,10 @@ export default function TripDetailPage() {
 
   if (!trip) return null;
 
-  const completedItems = items.filter(i => i.status === 'COMPLETED').length;
-  const totalItems     = items.length;
-  const progressPct    = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
+  const reviewableItems = items.filter(isReviewableItem);
+  const confirmedItems = reviewableItems.filter(i => i.status !== 'SUGGESTED').length;
+  const totalItems = reviewableItems.length;
+  const progressPct = totalItems > 0 ? Math.round((confirmedItems / totalItems) * 100) : 0;
 
   return (
     <div className="h-screen bg-slate-900 flex flex-col overflow-hidden">
@@ -212,18 +232,21 @@ export default function TripDetailPage() {
         </div>
 
         {/* Tab bar */}
-        <div className="flex gap-0 px-6 border-t border-white/10">
-          {(['timeline', 'map'] as const).map((tab) => (
+        <div className="flex gap-0 px-6 border-t border-white/10 overflow-x-auto">
+          {(['timeline', 'map', 'weather', 'budget'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors capitalize -mb-px ${
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors capitalize -mb-px whitespace-nowrap ${
                 activeTab === tab
                   ? 'border-indigo-400 text-white'
                   : 'border-transparent text-slate-500 hover:text-slate-300'
               }`}
             >
-              {tab === 'timeline' ? 'Timeline' : 'Map'}
+              <span className="inline-flex items-center gap-2">
+                {tab === 'timeline' ? <Route className="w-4 h-4" /> : tab === 'map' ? <Map className="w-4 h-4" /> : tab === 'weather' ? <CloudSun className="w-4 h-4" /> : <CircleDollarSign className="w-4 h-4" />}
+                {tab === 'timeline' ? 'Timeline' : tab === 'map' ? 'Map' : tab === 'weather' ? 'Weather' : 'Budget'}
+              </span>
             </button>
           ))}
         </div>
@@ -233,7 +256,7 @@ export default function TripDetailPage() {
       <div className="flex-1 flex overflow-hidden relative">
         {/* Main content */}
         <div className="flex-1 overflow-auto bg-slate-950">
-          <div className="max-w-4xl mx-auto px-6 py-8">
+          <div className="max-w-7xl mx-auto px-6 py-8">
             
             {/* ── Summary Card ─────────────────────────────────────────────── */}
             <div className="bg-slate-900/50 backdrop-blur-md border border-white/10 rounded-3xl p-8 mb-10 shadow-2xl">
@@ -243,8 +266,8 @@ export default function TripDetailPage() {
               
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 mb-8">
                 <div>
-                  <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Destinations</p>
-                  <p className="text-white font-medium">{new Set(items.map(i => i.activity_details.address?.split(',')[0] || trip.destination)).size} Locations</p>
+                  <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Destination</p>
+                  <p className="text-white font-medium truncate" title={trip.destination}>{trip.destination}</p>
                 </div>
                 <div>
                   <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Total Budget</p>
@@ -256,7 +279,10 @@ export default function TripDetailPage() {
                 </div>
                 <div>
                   <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Created By</p>
-                  <p className="text-indigo-400 font-medium flex items-center gap-1.5">✨ AI Generated</p>
+                  <p className="text-indigo-400 font-medium flex items-center gap-1.5">
+                    <Bot className="w-4 h-4" />
+                    AI Generated
+                  </p>
                 </div>
               </div>
 
@@ -264,8 +290,8 @@ export default function TripDetailPage() {
               <div className="bg-black/20 rounded-2xl p-5 border border-white/5">
                 <div className="flex justify-between items-end mb-3">
                   <div>
-                    <h3 className="text-white font-semibold text-sm mb-1">Trip Completion</h3>
-                    <p className="text-slate-400 text-xs">{completedItems} of {totalItems} activities confirmed</p>
+                    <h3 className="text-white font-semibold text-sm mb-1">Planning Progress</h3>
+                    <p className="text-slate-400 text-xs">{confirmedItems} of {totalItems} activities confirmed</p>
                   </div>
                   <span className="text-2xl font-bold text-white">{progressPct}%</span>
                 </div>
@@ -287,8 +313,14 @@ export default function TripDetailPage() {
                 readOnly={trip.user_role === 'VIEWER'}
                 tripStatus={trip.status}
               />
-            ) : (
+            ) : activeTab === 'map' ? (
               <InteractiveMap items={items} />
+            ) : activeTab === 'weather' ? (
+              <div className="max-w-5xl">
+                <WeatherInsight weather={weather} loading={weatherLoading} />
+              </div>
+            ) : (
+              <TripBudget trip={trip} items={items} />
             )}
           </div>
         </div>

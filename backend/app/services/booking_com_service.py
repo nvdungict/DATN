@@ -67,8 +67,12 @@ class BookingComClient:
                 response = await client.get(endpoint, headers=self._get_headers(), params=params, timeout=20)
                 if response.status_code == 200:
                     data = response.json()
-                    hotels_data = data.get("data", [])
-                    
+                    hotels_raw = data.get("data", [])
+                    if isinstance(hotels_raw, dict):
+                        hotels_data = hotels_raw.get("hotels", [])
+                    else:
+                        hotels_data = hotels_raw
+                        
                     # Some RapidAPI endpoints return nested properties, some return flat. 
                     # Usually it's in a list under data.
                     # Looking at the curl output, each item has 'property'

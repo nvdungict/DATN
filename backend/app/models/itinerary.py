@@ -9,6 +9,7 @@ class ItemType(str, Enum):
     MEAL = "MEAL"
     TRANSPORT = "TRANSPORT"
     LODGING = "LODGING"
+    OTHER = "OTHER"
 
 
 class ItemStatus(str, Enum):

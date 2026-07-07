@@ -5,12 +5,13 @@ import Link from 'next/link';
 import { getTrips, deleteTrip, generateTrip, getMe } from '@/lib/api';
 import type { Trip, User } from '@/types';
 import dynamic from 'next/dynamic';
+import { Bot, CalendarDays, CircleDollarSign, Compass, Map, Plane, Plus, Route, Sparkles, Loader2 } from 'lucide-react';
 
 import Sidebar from '@/components/Sidebar';
 import StatsCard from '@/components/StatsCard';
 import TripCard from '@/components/TripCard';
 import ActivityFeed from '@/components/ActivityFeed';
-import FloatingCopilot from '@/components/FloatingCopilot';
+
 import DeleteConfirmModal from '@/components/DeleteConfirmModal';
 import { formatCurrency, getAppCurrency, normalizeToVND } from '@/lib/currency';
 
@@ -20,16 +21,16 @@ const PopularDestinations = dynamic(() => import('@/components/PopularDestinatio
 // ─── Travel Styles data ───────────────────────────────────────────────────────
 
 const TRAVEL_STYLES = [
-  { label: 'Adventure', icon: '🧗', color: 'from-orange-600/30 to-red-600/30 border-orange-500/30' },
-  { label: 'Nature', icon: '🌿', color: 'from-emerald-600/30 to-green-600/30 border-emerald-500/30' },
-  { label: 'Food', icon: '🍜', color: 'from-amber-600/30 to-yellow-600/30 border-amber-500/30' },
-  { label: 'Photography', icon: '📸', color: 'from-pink-600/30 to-rose-600/30 border-pink-500/30' },
-  { label: 'Coffee', icon: '☕', color: 'from-stone-600/30 to-amber-600/30 border-stone-500/30' },
-  { label: 'Culture', icon: '🏛️', color: 'from-violet-600/30 to-purple-600/30 border-violet-500/30' },
-  { label: 'Beach', icon: '🏖️', color: 'from-sky-600/30 to-cyan-600/30 border-sky-500/30' },
-  { label: 'Luxury', icon: '💎', color: 'from-yellow-600/30 to-amber-600/30 border-yellow-500/30' },
-  { label: 'Shopping', icon: '🛍️', color: 'from-fuchsia-600/30 to-pink-600/30 border-fuchsia-500/30' },
-  { label: 'Nightlife', icon: '🌃', color: 'from-indigo-600/30 to-violet-600/30 border-indigo-500/30' },
+  { label: 'Adventure' },
+  { label: 'Nature' },
+  { label: 'Food' },
+  { label: 'Photography' },
+  { label: 'Coffee' },
+  { label: 'Culture' },
+  { label: 'Beach' },
+  { label: 'Luxury' },
+  { label: 'Shopping' },
+  { label: 'Nightlife' },
 ];
 
 function getGreeting(name: string): string {
@@ -221,24 +222,25 @@ export default function DashboardInner() {
                 <p className="text-slate-400">
                   {trips.length > 0
                     ? `You have ${trips.length} trip${trips.length > 1 ? 's' : ''} planned${activeTrips > 0 ? ` · ${activeTrips} active` : ''}.`
-                    : "Let's plan your first adventure! 🌍"}
+                    : "Let's plan your first trip."}
                 </p>
               </div>
               <button
                 onClick={() => { setActiveTab('ai'); setTimeout(() => plannerRef.current?.scrollIntoView({ behavior: 'smooth' }), 50); }}
                 className="hidden sm:flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600/20 border border-indigo-500/30 text-indigo-300 hover:bg-indigo-600/30 hover:text-white transition-all duration-300 transform hover:scale-105 text-sm font-medium"
               >
-                ✨ New Trip
+                <Plus className="h-4 w-4" />
+                New Trip
               </button>
             </div>
 
             {/* ── Stats Cards ───────────────────────────────────────────────── */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatsCard icon="✈️" label="Trips Planned" value={trips.length} gradient="bg-gradient-to-br from-indigo-600 to-violet-600" />
-              <StatsCard icon="🌍" label="Destinations" value={uniqueDestinations} gradient="bg-gradient-to-br from-emerald-600 to-teal-600" />
-              <StatsCard icon="🚀" label="Active Trips" value={activeTrips} gradient="bg-gradient-to-br from-amber-600 to-orange-600" />
+              <StatsCard icon={<Plane className="h-5 w-5" />} label="Trips Planned" value={trips.length} gradient="bg-gradient-to-br from-indigo-600 to-violet-600" />
+              <StatsCard icon={<Compass className="h-5 w-5" />} label="Destinations" value={uniqueDestinations} gradient="bg-gradient-to-br from-emerald-600 to-teal-600" />
+              <StatsCard icon={<Route className="h-5 w-5" />} label="Active Trips" value={activeTrips} gradient="bg-gradient-to-br from-amber-600 to-orange-600" />
               <StatsCard
-                icon="💰"
+                icon={<CircleDollarSign className="h-5 w-5" />}
                 label="Total Budget"
                 value={totalBudget > 0 ? formatCurrency(totalBudget, 'VND') : '—'}
                 gradient="bg-gradient-to-br from-sky-600 to-cyan-600"
@@ -256,7 +258,7 @@ export default function DashboardInner() {
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  🤖 AI Planner
+                  <span className="inline-flex items-center gap-2"><Bot className="h-4 w-4" /> AI Planner</span>
                 </button>
                 <button
                   onClick={() => setActiveTab('guided')}
@@ -266,14 +268,14 @@ export default function DashboardInner() {
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  🗺️ Guided Planner
+                  <span className="inline-flex items-center gap-2"><Map className="h-4 w-4" /> Guided Planner</span>
                 </button>
               </div>
 
               <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
                 {activeTab === 'ai' ? (
                   <div>
-                    <h2 className="text-xl font-bold text-white mb-1">Plan with AI ✨</h2>
+                    <h2 className="text-xl font-bold text-white mb-1">Plan with AI</h2>
                     <p className="text-slate-400 text-sm mb-5">
                       Describe your dream trip in natural language and let AI do all the planning.
                     </p>
@@ -288,9 +290,18 @@ export default function DashboardInner() {
                       <button
                         type="submit"
                         disabled={generating}
-                        className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold disabled:opacity-50 transition-all duration-300 transform hover:-translate-y-0.5 shadow-lg shadow-indigo-500/25"
+                        className={`w-full sm:w-auto px-8 py-3.5 rounded-xl text-white font-semibold transition-all duration-300 shadow-lg ${
+                          generating
+                            ? 'bg-indigo-500/50 cursor-not-allowed shadow-none'
+                            : 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 hover:-translate-y-0.5 shadow-indigo-500/25'
+                        }`}
                       >
-                        {generating ? '✨ AI is planning...' : '🚀 Generate Trip'}
+                        {generating ? (
+                          <span className="flex items-center gap-2 justify-center">
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                            AI is planning...
+                          </span>
+                        ) : 'Generate Trip'}
                       </button>
                     </form>
                     {/* Quick prompts */}
@@ -313,7 +324,7 @@ export default function DashboardInner() {
                   </div>
                 ) : (
                   <div>
-                    <h2 className="text-xl font-bold text-white mb-1">Guided Trip Planner 🗺️</h2>
+                    <h2 className="text-xl font-bold text-white mb-1">Guided Trip Planner</h2>
                     <p className="text-slate-400 text-sm mb-5">
                       Not sure what to write? Fill in the details and we'll craft the perfect AI prompt for you.
                     </p>
@@ -334,7 +345,7 @@ export default function DashboardInner() {
             {/* ── Travel Styles ─────────────────────────────────────────────── */}
             <section>
               <div className="flex items-center justify-between mb-5">
-                <h2 className="text-xl font-bold text-white">🎨 Travel Styles</h2>
+                <h2 className="text-xl font-bold text-white">Travel Styles</h2>
                 {selectedStyles.length > 0 && (
                   <button onClick={() => setSelectedStyles([])} className="text-slate-500 hover:text-slate-300 text-xs transition">
                     Clear ({selectedStyles.length})
@@ -342,17 +353,17 @@ export default function DashboardInner() {
                 )}
               </div>
               <div className="flex flex-wrap gap-3">
-                {TRAVEL_STYLES.map(({ label, icon, color }) => (
+                {TRAVEL_STYLES.map(({ label }) => (
                   <button
                     key={label}
                     onClick={() => toggleStyle(label)}
-                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border bg-gradient-to-br text-sm font-medium transition-all duration-200 ${
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all duration-200 ${
                       selectedStyles.includes(label)
-                        ? `${color} text-white scale-105 shadow-lg`
+                        ? 'border-indigo-500/50 bg-indigo-500/15 text-white shadow-lg shadow-indigo-950/20'
                         : 'bg-white/5 border-white/10 text-slate-400 hover:text-white hover:bg-white/8'
                     }`}
                   >
-                    <span className="text-base">{icon}</span>
+                    <Sparkles className="h-3.5 w-3.5" />
                     {label}
                   </button>
                 ))}
@@ -364,7 +375,7 @@ export default function DashboardInner() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between mb-5">
                   <h2 className="text-xl font-bold text-white">
-                    ✈️ My Trips
+                    My Trips
                     {trips.length > 0 && <span className="ml-2 text-sm font-normal text-slate-500">({trips.length})</span>}
                   </h2>
                 </div>
@@ -375,7 +386,7 @@ export default function DashboardInner() {
                   </div>
                 ) : trips.length === 0 ? (
                   <div className="text-center py-20 text-slate-500 border border-white/8 rounded-2xl bg-white/2">
-                    <span className="text-5xl block mb-4">🗺️</span>
+                    <Map className="mx-auto mb-4 h-10 w-10 text-slate-600" />
                     <p className="font-medium text-slate-400">No trips yet</p>
                     <p className="text-sm mt-1">Start planning above or explore destinations below!</p>
                   </div>
@@ -391,7 +402,7 @@ export default function DashboardInner() {
               {/* Activity Feed */}
               {trips.length > 0 && (
                 <div className="hidden xl:block w-72 flex-shrink-0">
-                  <h2 className="text-xl font-bold text-white mb-5">📋 Recent Activity</h2>
+                  <h2 className="text-xl font-bold text-white mb-5">Recent Activity</h2>
                   <div className="bg-white/5 border border-white/10 rounded-2xl p-3">
                     <ActivityFeed trips={trips} />
                   </div>
@@ -403,7 +414,7 @@ export default function DashboardInner() {
         </div>
       </div>
 
-      <FloatingCopilot />
+
 
       <DeleteConfirmModal 
         isOpen={deletingTripId !== null}

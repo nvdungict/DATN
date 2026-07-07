@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, MapPin, Filter, AlignLeft, CalendarDays, ExternalLink, X, Clock } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
-import FloatingCopilot from '@/components/FloatingCopilot';
+
 import { getTrips, updateTrip, getTripItinerary } from '@/lib/api';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, startOfWeek, endOfWeek, isWithinInterval, addDays, differenceInDays } from 'date-fns';
 import { DndContext, useDraggable, useDroppable, DragEndEvent } from '@dnd-kit/core';
@@ -140,7 +140,7 @@ export default function CalendarPage() {
     const its: Record<number, any[]> = {};
     for (const t of dayTrips) {
       try {
-        const fullItinerary = await getTripItinerary(t.id);
+        const fullItinerary = (await getTripItinerary(t.id)) as any[];
         // Filter itinerary for this specific day
         const tripStart = new Date(t.start_date);
         tripStart.setHours(0,0,0,0);
@@ -300,7 +300,7 @@ export default function CalendarPage() {
         </div>
       </div>
       
-      <FloatingCopilot />
+
 
       {/* --- Detailed Day View Modal --- */}
       <Dialog.Root open={isModalOpen} onOpenChange={setIsModalOpen}>
