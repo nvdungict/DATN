@@ -6,21 +6,7 @@ Dưới đây là các bước để cài đặt và chạy dự án. Bạn có 
 
 ---
 
-## ⚙️ 1. Cấu hình môi trường (Bắt buộc)
-
-Trước khi chạy, bạn cần thiết lập các biến môi trường từ file `.env.example` có sẵn.
-
-1. Tại thư mục gốc của dự án, copy file `.env.example` thành file `.env`:
-   ```bash
-   cp .env.example .env
-   ```
-2. Mở file `.env` và điền các API Key cần thiết, đặc biệt là:
-   - `OPENAI_API_KEY`: API Key của OpenAI
-   - `TAVILY_API_KEY`: API Key của Tavily (để tìm kiếm web)
-
----
-
-## 🐳 2. Cách 1: Chạy bằng Docker (Khuyên Dùng)
+## 🐳 1. Cách 1: Chạy bằng Docker (Khuyên Dùng)
 
 Đây là cách nhanh nhất, Docker sẽ tự động setup database, backend và frontend, sau đó kết nối chúng với nhau.
 
@@ -49,7 +35,7 @@ Trước khi chạy, bạn cần thiết lập các biến môi trường từ f
 
 ---
 
-## 💻 3. Cách 2: Chạy thủ công (Dành cho Development)
+## 💻 2. Cách 2: Chạy thủ công (Dành cho Development)
 
 Nếu bạn muốn debug trực tiếp hoặc thay đổi code frontend/backend tiện lợi hơn thì chạy thủ công từng phần.
 
