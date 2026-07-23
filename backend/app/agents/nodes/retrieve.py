@@ -27,7 +27,7 @@ async def retrieve_node(state: AgentState, session: AsyncSession) -> AgentState:
         )
         trip = trip_result.scalar_one_or_none()
         if trip:
-            state["existing_trip"] = trip.model_dump()
+            state["existing_trip"] = trip.model_dump(mode="json")
 
             items_result = await session.execute(
                 select(ItineraryItem)
@@ -35,7 +35,7 @@ async def retrieve_node(state: AgentState, session: AsyncSession) -> AgentState:
                 .order_by(ItineraryItem.day_number, ItineraryItem.start_time)
             )
             items = items_result.scalars().all()
-            state["itinerary_items"] = [i.model_dump() for i in items]
+            state["itinerary_items"] = [i.model_dump(mode="json") for i in items]
 
     # Retrieve relevant memories via vector search
     query = state["user_message"]

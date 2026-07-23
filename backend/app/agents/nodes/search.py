@@ -1,5 +1,6 @@
 from app.agents.state import AgentState
 from app.agents.tools import get_search_tool
+import asyncio
 
 
 def _extract_trip_context(state: AgentState) -> dict:
@@ -62,23 +63,26 @@ async def search_node(state: AgentState) -> AgentState:
     elif destination:
         # CREATE_TRIP / MODIFY_TRIP: tìm attractions + nhà hàng theo địa điểm
         queries.append(f"top tourist attractions things to do in {destination}")
-        queries.append(f"best restaurants food in {destination}")
+        queries.append(f"specific restaurant names and street addresses for local food in {destination}")
+        queries.append(f"best local restaurants seafood cafes with addresses in {destination}")
     else:
         queries.append(user_message[:200])
 
-    all_results = []
-    for q in queries:
+    async def run_search(q: str) -> list[dict]:
         try:
             results = await tool.search(q)
-            all_results.extend(results)
+            return results
         except Exception as e:
-            all_results.append(
+            return [
                 {
                     "type": "placeholder",
                     "message": f"Không tìm thấy thông tin ({str(e)})",
                     "query": q,
                 }
-            )
+            ]
+
+    search_batches = await asyncio.gather(*(run_search(q) for q in queries))
+    all_results = [result for batch in search_batches for result in batch]
 
     state["search_results"] = all_results[:10]
 
@@ -117,13 +121,36 @@ async def search_node(state: AgentState) -> AgentState:
                 
             dest_airport = get_airport(destination)
             
-            flight_offers = []
-            # Only search flights if destination has an airport and it's different from origin
-            if dest_airport and origin != dest_airport:
-                flight_offers = await travelport.search_flights(origin, dest_airport, start_date_str, 1)
-            
-            # Fetch hotels from Booking.com (RapidAPI)
-            hotel_offers = await booking_com.search_hotels(destination, start_date_str, end_date_str, 1)
+            async def search_flight_offers() -> list:
+                # Only search flights if destination has an airport and it's different from origin
+                if dest_airport and origin != dest_airport:
+                    adults = int(entities.get("adults") or entities.get("num_people") or entities.get("travelers") or 1)
+                    inbound_flights = await booking_com.search_flights(origin, dest_airport, start_date_str, adults)
+                    outbound_flights = await booking_com.search_flights(dest_airport, origin, end_date_str, adults)
+                    for flight in inbound_flights:
+                        flight["direction"] = "inbound"
+                    for flight in outbound_flights:
+                        flight["direction"] = "outbound"
+                    if inbound_flights or outbound_flights:
+                        return inbound_flights + outbound_flights
+
+                    fallback_inbound = await travelport.search_flights(origin, dest_airport, start_date_str, adults)
+                    fallback_outbound = await travelport.search_flights(dest_airport, origin, end_date_str, adults)
+                    for flight in fallback_inbound:
+                        flight["direction"] = "inbound"
+                    for flight in fallback_outbound:
+                        flight["direction"] = "outbound"
+                    return fallback_inbound + fallback_outbound
+                return []
+
+            async def search_hotel_offers() -> list:
+                # Fetch hotels from Booking.com (RapidAPI)
+                return await booking_com.search_hotels(destination, start_date_str, end_date_str, 1)
+
+            flight_offers, hotel_offers = await asyncio.gather(
+                search_flight_offers(),
+                search_hotel_offers(),
+            )
             
             state["gds_offers"] = {
                 "flights": flight_offers,

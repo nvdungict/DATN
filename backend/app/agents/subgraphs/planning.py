@@ -11,6 +11,7 @@ from app.agents.nodes.weather import weather_context_node
 from app.agents.nodes.plan import plan_node
 from app.agents.nodes.constraint import constraint_node
 from app.agents.nodes.finalize import finalize_node
+from app.agents.timing import timed_node
 
 
 def planning_entry_node(state: AgentState) -> AgentState:
@@ -30,13 +31,13 @@ def build_planning_graph(session: AsyncSession) -> StateGraph:
 
     graph = StateGraph(AgentState)
 
-    graph.add_node("planning_entry", planning_entry_node)
-    graph.add_node("retrieve", _retrieve)
-    graph.add_node("search", search_node)
-    graph.add_node("weather_context", weather_context_node)
-    graph.add_node("plan", plan_node)
-    graph.add_node("constraint", constraint_node)
-    graph.add_node("finalize", _finalize)
+    graph.add_node("planning_entry", timed_node("planning_entry", planning_entry_node))
+    graph.add_node("retrieve", timed_node("retrieve", _retrieve))
+    graph.add_node("search", timed_node("search", search_node))
+    graph.add_node("weather", timed_node("weather", weather_context_node))
+    graph.add_node("plan", timed_node("plan", plan_node))
+    graph.add_node("constraint", timed_node("constraint", constraint_node))
+    graph.add_node("finalize", timed_node("finalize", _finalize))
 
     graph.set_entry_point("planning_entry")
 
@@ -47,11 +48,11 @@ def build_planning_graph(session: AsyncSession) -> StateGraph:
         {"search": "search", "retrieve": "retrieve"},
     )
 
-    # retrieve/search → weather_context → plan
-    graph.add_edge("retrieve", "weather_context")
+    # retrieve/search → weather → plan
+    graph.add_edge("retrieve", "weather")
 
-    graph.add_edge("search", "weather_context")
-    graph.add_edge("weather_context", "plan")
+    graph.add_edge("search", "weather")
+    graph.add_edge("weather", "plan")
 
     # plan → constraint → finalize
     graph.add_edge("plan", "constraint")

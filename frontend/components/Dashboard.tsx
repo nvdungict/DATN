@@ -80,12 +80,115 @@ type PendingBulkConfirm = {
   itemIds: number[];
 } | null;
 
+const DEMO_TIME_SLOTS: Array<[string, string]> = [
+  ['07:30:00', '08:30:00'],
+  ['09:00:00', '11:30:00'],
+  ['12:00:00', '13:30:00'],
+  ['14:00:00', '17:00:00'],
+  ['18:30:00', '20:00:00'],
+  ['20:30:00', '22:00:00'],
+];
+
+function isHiddenTimelineItem(item: ItineraryItem) {
+  const name = item.activity_details?.name?.toLowerCase() ?? '';
+  return (
+    item.type === 'OTHER' ||
+    name.includes('local transport') ||
+    name.includes('chi phí đi lại')
+  );
+}
+
+function isFixedFlightItem(item: ItineraryItem) {
+  const details = item.activity_details ?? {};
+  return (
+    item.type === 'TRANSPORT' &&
+    (
+      Boolean(details.flight_number) ||
+      Boolean(details.airline) ||
+      details.booking_link?.startsWith('agoda_flight') ||
+      details.booking_link?.startsWith('travelport_')
+    )
+  );
+}
+
+function minutesToTime(minutes: number) {
+  const clamped = Math.min(Math.max(minutes, 0), 23 * 60 + 59);
+  const hours = Math.floor(clamped / 60);
+  const mins = clamped % 60;
+  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:00`;
+}
+
+function getDemoSlot(slotIndex: number): [string, string] {
+  if (slotIndex < DEMO_TIME_SLOTS.length) {
+    return DEMO_TIME_SLOTS[slotIndex];
+  }
+
+  const extraStart = 22 * 60 + (slotIndex - DEMO_TIME_SLOTS.length) * 45;
+  return [minutesToTime(extraStart), minutesToTime(extraStart + 45)];
+}
+
+type LodgingPhase = 'CHECK_IN' | 'CHECK_OUT';
+
+function getLodgingPhase(item: ItineraryItem, maxDay?: number): LodgingPhase | null {
+  if (item.type !== 'LODGING') return null;
+
+  const details = item.activity_details ?? {};
+  const text = `${details.name ?? ''} ${details.note ?? ''}`.toLowerCase();
+
+  if (text.includes('check-out') || text.includes('checkout') || text.includes('check out')) {
+    return 'CHECK_OUT';
+  }
+
+  if (text.includes('check-in') || text.includes('checkin') || text.includes('check in')) {
+    return 'CHECK_IN';
+  }
+
+  if (maxDay && item.day_number === maxDay) {
+    return 'CHECK_OUT';
+  }
+
+  return 'CHECK_IN';
+}
+
+function getLodgingDisplayName(item: ItineraryItem, maxDay?: number) {
+  const name = item.activity_details?.name || 'Hotel';
+  const phase = getLodgingPhase(item, maxDay);
+  const alreadyLabeled = /^hotel\s+check[-\s]?(in|out):/i.test(name) || /^check[-\s]?(in|out):/i.test(name);
+
+  if (phase === 'CHECK_IN' && !alreadyLabeled) {
+    return `Hotel Check-in: ${name}`;
+  }
+
+  if (phase === 'CHECK_OUT' && !alreadyLabeled) {
+    return `Hotel Check-out: ${name}`;
+  }
+
+  return name;
+}
+
+function syncCheckoutHotelDetails(checkoutItem: ItineraryItem, checkinDetails: ItineraryItem['activity_details']) {
+  return {
+    ...checkoutItem.activity_details,
+    name: checkinDetails.name,
+    address: checkinDetails.address,
+    lat: checkinDetails.lat,
+    lng: checkinDetails.lng,
+    stars: checkinDetails.stars,
+    rating: checkinDetails.rating,
+    booking_link: checkinDetails.booking_link,
+    image_url: (checkinDetails as any).image_url,
+    hotel_id: (checkinDetails as any).hotel_id ?? (checkinDetails as any).id,
+    note: `Check-out from ${checkinDetails.name}.`,
+  };
+}
+
 // ─── Sortable item card ────────────────────────────────────────────────────────
 
 function SortableItem({
   item,
   tripDestination,
   tripCurrency,
+  maxDay,
   onConfirm,
   onComplete,
   onOpenDetails,
@@ -94,17 +197,23 @@ function SortableItem({
   item: ItineraryItem;
   tripDestination: string;
   tripCurrency?: string;
+  maxDay?: number;
   onConfirm: (id: number) => void;
   onComplete: (id: number) => void;
   onOpenDetails: (item: ItineraryItem) => void;
   readOnly?: boolean;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: item.id, disabled: readOnly });
+  const fixedFlight = isFixedFlightItem(item);
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: item.id, disabled: readOnly || fixedFlight });
 
   const style = { transform: CSS.Transform.toString(transform), transition };
   const details = item.activity_details;
   const type = typeConfig[item.type] ?? { label: item.type, icon: 'I', dot: 'bg-slate-400', badge: 'bg-slate-500/15 text-slate-300 border-slate-500/30 shadow-none' };
   const status = statusConfig[item.status] ?? statusConfig.SUGGESTED;
+  const lodgingPhase = getLodgingPhase(item, maxDay);
+  const isCheckout = lodgingPhase === 'CHECK_OUT';
+  const displayName = lodgingPhase ? getLodgingDisplayName(item, maxDay) : details.name;
+  const typeLabel = lodgingPhase === 'CHECK_IN' ? 'Check-in' : lodgingPhase === 'CHECK_OUT' ? 'Check-out' : type.label;
   let imgSrc = getDestinationImage(details.address || details.name || tripDestination);
   
   if (item.type === 'TRANSPORT') {
@@ -142,12 +251,12 @@ function SortableItem({
         
         {/* Thumbnail */}
         <div className="w-28 flex-shrink-0 relative hidden sm:block border-r border-white/5">
-          <img src={imgSrc} alt={details.name} className="absolute inset-0 w-full h-full object-cover" />
+          <img src={imgSrc} alt={displayName} className="absolute inset-0 w-full h-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-r from-transparent to-slate-900/90" />
         </div>
 
         {/* Drag handle */}
-        {!readOnly && (
+        {!readOnly && !fixedFlight && (
           <div
             {...attributes}
             {...listeners}
@@ -169,11 +278,11 @@ function SortableItem({
         <div className="flex-1 py-3 pr-4 min-w-0">
           {/* Top row: name + time + type */}
           <div className="flex items-start justify-between gap-4 mb-1">
-            <h4 className="text-white font-semibold text-[15px] leading-snug group-hover:text-indigo-200 transition-colors truncate">{details.name}</h4>
+            <h4 className="text-white font-semibold text-[15px] leading-snug group-hover:text-indigo-200 transition-colors truncate">{displayName}</h4>
             
             <div className="flex items-center gap-2 flex-shrink-0">
               <span className={`inline-flex items-center gap-1 text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border font-bold ${type.badge}`}>
-                {type.icon} {type.label}
+                {type.icon} {typeLabel}
               </span>
               <span className="hidden lg:inline-flex text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-white/10 text-slate-500 group-hover:text-slate-300 transition">
                 Details
@@ -213,7 +322,7 @@ function SortableItem({
           {/* Action Row */}
           <div className="flex items-center gap-3 mt-3 pt-3 border-t border-white/5">
             <div className="flex items-center gap-2">
-              {details.booking_link && (
+              {details.booking_link && !(item.type === 'LODGING' && isCheckout) && (
                 details.booking_link.startsWith('http') ? (
                   <a 
                     href={details.booking_link} 
@@ -247,7 +356,7 @@ function SortableItem({
                 )
               )}
               
-              {!readOnly && item.status === 'SUGGESTED' && (item.type === 'LODGING' || (item.type === 'TRANSPORT' && (details.airline || details.flight_number || details.booking_link))) && (
+              {!readOnly && item.type === 'LODGING' && !isCheckout && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -376,25 +485,37 @@ export default function Dashboard({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  const timelineItems = items.filter(i => 
-    i.type !== 'OTHER' && 
-    !i.activity_details?.name?.toLowerCase().includes('local transport') &&
-    !i.activity_details?.name?.toLowerCase().includes('chi phí đi lại')
-  );
+  const timelineItems = items.filter((item) => !isHiddenTimelineItem(item));
 
   const days = Array.from(new Set(timelineItems.map((i) => i.day_number))).sort((a, b) => a - b);
+  const maxDay = days.length > 0 ? Math.max(...days) : undefined;
   const isAllConfirmed = timelineItems.length > 0 && timelineItems.every(i => i.status !== 'SUGGESTED');
   const showPaymentBanner = isAllConfirmed && !readOnly && tripStatus !== 'ACTIVE';
   const showSuccessBanner = tripStatus === 'ACTIVE';
   const totalCostVND = timelineItems.reduce((sum, item) => sum + extractItemCostInVND(item.activity_details, tripCurrency), 0);
 
-  function withSortOrder(nextItems: ItineraryItem[]) {
+  function withSortOrderAndTimes(nextItems: ItineraryItem[]) {
     const orderByDay = new Map<number, number>();
+    const visibleSlotByDay = new Map<number, number>();
+
     return nextItems.map((item) => {
       const nextOrder = orderByDay.get(item.day_number) ?? 0;
       orderByDay.set(item.day_number, nextOrder + 1);
+
+      const shouldReschedule = !isHiddenTimelineItem(item) && !isFixedFlightItem(item);
+      const slotIndex = visibleSlotByDay.get(item.day_number) ?? 0;
+      if (!isHiddenTimelineItem(item)) {
+        visibleSlotByDay.set(item.day_number, slotIndex + 1);
+      }
+
+      const [startTime, endTime] = shouldReschedule
+        ? getDemoSlot(slotIndex)
+        : [item.start_time, item.end_time];
+
       return {
         ...item,
+        start_time: startTime,
+        end_time: endTime,
         activity_details: {
           ...item.activity_details,
           _sort_order: nextOrder,
@@ -412,7 +533,7 @@ export default function Dashboard({
     if (oldIndex < 0 || newIndex < 0) return;
 
     const previousItems = items;
-    const reorderedItems = withSortOrder(arrayMove(items, oldIndex, newIndex));
+    const reorderedItems = withSortOrderAndTimes(arrayMove(items, oldIndex, newIndex));
     onItemsChange(reorderedItems);
 
     setOrderSaving(true);
@@ -528,8 +649,25 @@ export default function Dashboard({
     try {
       const isFlight = selectedAltItem.type === 'TRANSPORT';
       const newDetails = { ...selectedAltItem.activity_details, ...opt };
+      const lodgingPhase = getLodgingPhase(selectedAltItem, maxDay);
       
-      const newCost = isFlight ? opt.price : (opt.total_price || opt.price_per_night);
+      const passengers = Number(selectedAltItem.activity_details?.passengers || 1);
+      const newCost = isFlight ? Number(opt.price || 0) * passengers : (opt.total_price || opt.price_per_night);
+      if (isFlight) {
+        newDetails.name = `${opt.airline || 'Flight'} ${opt.flight_number || ''}`.trim();
+        newDetails.booking_link = opt.id || opt.booking_link;
+        newDetails.price_per_adult = Number(opt.price || 0);
+        newDetails.passengers = passengers;
+        newDetails.price = newCost;
+      }
+      if (selectedAltItem.type === 'LODGING') {
+        newDetails.name = opt.name || opt.hotel_name || selectedAltItem.activity_details.name;
+        newDetails.address = opt.address || selectedAltItem.activity_details.address;
+        newDetails.booking_link = opt.id || opt.booking_link || selectedAltItem.activity_details.booking_link;
+        if (lodgingPhase === 'CHECK_IN') {
+          newDetails.note = `Check-in at ${newDetails.name}.`;
+        }
+      }
       newDetails.estimated_cost = newCost;
       
       const updatedItem = {
@@ -540,7 +678,17 @@ export default function Dashboard({
       const token = localStorage.getItem('access_token');
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
       
-      const newItems = items.map((i) => (i.id === updatedItem.id ? updatedItem : i));
+      const shouldSyncCheckout = selectedAltItem.type === 'LODGING' && lodgingPhase === 'CHECK_IN';
+      const newItems = items.map((i) => {
+        if (i.id === updatedItem.id) return updatedItem;
+        if (shouldSyncCheckout && getLodgingPhase(i, maxDay) === 'CHECK_OUT') {
+          return {
+            ...i,
+            activity_details: syncCheckoutHotelDetails(i, newDetails),
+          };
+        }
+        return i;
+      });
       
       const res = await fetch(`${apiUrl}/trips/${tripId}/itinerary`, {
         method: 'PATCH',
@@ -689,6 +837,7 @@ export default function Dashboard({
                             item={item}
                             tripDestination={tripDestination}
                             tripCurrency={tripCurrency}
+                            maxDay={maxDay}
                             onConfirm={handleConfirm}
                             onComplete={handleComplete}
                             onOpenDetails={setSelectedDetailItem}

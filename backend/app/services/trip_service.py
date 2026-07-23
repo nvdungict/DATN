@@ -91,22 +91,41 @@ class TripService:
     async def delete_trip(self, trip: TripRead) -> None:
         """Cascade-delete trip: remove child rows first to avoid FK violation."""
         from app.models.memory import MemoryStream
+        from app.models.booking import Booking
+        from app.models.notification import Notification
         from sqlalchemy import delete
 
-        # 1. Xoá itinerary items thuộc trip này
+        itinerary_items = await self.get_itinerary(trip.id)
+        itinerary_item_ids = [item.id for item in itinerary_items if item.id is not None]
+
+        # 1. Xoá booking trước vì bookings có FK tới itinerary_items
+        await self.session.execute(
+            delete(Booking).where(Booking.trip_id == trip.id)
+        )
+
+        # 2. Xoá notifications liên quan tới trip và activity reminders
+        await self.session.execute(
+            delete(Notification).where(Notification.related_id == trip.id)
+        )
+        if itinerary_item_ids:
+            await self.session.execute(
+                delete(Notification).where(Notification.related_id.in_(itinerary_item_ids))
+            )
+
+        # 3. Xoá itinerary items thuộc trip này
         await self.session.execute(
             delete(ItineraryItem).where(ItineraryItem.trip_id == trip.id)
         )
-        # 2. Xoá memory streams liên quan đến trip này
+        # 4. Xoá memory streams liên quan đến trip này
         await self.session.execute(
             delete(MemoryStream).where(MemoryStream.trip_id == trip.id)
         )
-        # 3. Xóa collaborators
+        # 5. Xóa collaborators
         from app.models.trip import TripCollaborator
         await self.session.execute(
             delete(TripCollaborator).where(TripCollaborator.trip_id == trip.id)
         )
-        # 4. Xoá trip
+        # 6. Xoá trip
         db_trip = await self.session.get(Trip, trip.id)
         if db_trip:
             await self.session.delete(db_trip)

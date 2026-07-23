@@ -46,13 +46,26 @@ def _summarize_weather(weather: dict[str, Any]) -> str:
     ]
 
     for day in weather.get("days", [])[:14]:
+        rain = day.get("chance_of_rain")
+        try:
+            rain_value = float(rain)
+        except (TypeError, ValueError):
+            rain_label = "unknown rain risk"
+        else:
+            if rain_value < 40:
+                rain_label = "low rain risk; outdoor plans are acceptable"
+            elif rain_value < 75:
+                rain_label = "moderate rain risk; keep outdoor plans with backups"
+            else:
+                rain_label = "very high rain risk; prefer indoor alternatives"
         lines.append(
-            "- {date}: {condition}, {min_temp}-{max_temp}C, rain {rain}%, UV {uv}, wind {wind} km/h".format(
+            "- {date}: {condition}, {min_temp}-{max_temp}C, rain {rain}% ({rain_label}), UV {uv}, wind {wind} km/h".format(
                 date=day.get("date"),
                 condition=day.get("condition") or "Unknown",
                 min_temp=round(day.get("min_temp_c")) if day.get("min_temp_c") is not None else "?",
                 max_temp=round(day.get("max_temp_c")) if day.get("max_temp_c") is not None else "?",
-                rain=day.get("chance_of_rain") if day.get("chance_of_rain") is not None else "?",
+                rain=rain if rain is not None else "?",
+                rain_label=rain_label,
                 uv=day.get("uv") if day.get("uv") is not None else "?",
                 wind=day.get("max_wind_kph") if day.get("max_wind_kph") is not None else "?",
             )

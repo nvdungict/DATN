@@ -107,7 +107,7 @@ async def update_itinerary(
     from app.core.socket_manager import manager
     await manager.broadcast_to_trip(trip_id, {"type": "REFRESH_ITINERARY"})
     
-    return {"updated": len(updated), "items": [i.model_dump() for i in updated]}
+    return {"updated": len(updated), "items": [i.model_dump(mode="json") for i in updated]}
 
 
 @router.post("/generate")
@@ -179,8 +179,12 @@ async def get_item_alternatives(
         except:
             target_date = str(date.today() + timedelta(days=7))
             
-        travelport = TravelportClient()
-        flights = await travelport.search_flights(origin, destination, target_date, 1)
+        passengers = int(details.get("passengers") or 1)
+        booking_com = BookingComClient()
+        flights = await booking_com.search_flights(origin, destination, target_date, passengers)
+        if not flights:
+            travelport = TravelportClient()
+            flights = await travelport.search_flights(origin, destination, target_date, 1)
         return {"type": "FLIGHT", "options": flights}
         
     elif item.type == ItemType.LODGING:
@@ -194,6 +198,9 @@ async def get_item_alternatives(
             
         booking_com = BookingComClient()
         hotels = await booking_com.search_hotels(location, checkin, checkout, 1)
+        if not hotels:
+            travelport = TravelportClient()
+            hotels = await travelport.search_hotels(location, checkin, checkout, 1)
         return {"type": "HOTEL", "options": hotels}
         
     else:

@@ -9,7 +9,7 @@ import ChatInterface from '@/components/ChatInterface';
 import DeleteConfirmModal from '@/components/DeleteConfirmModal';
 import ShareModal from '@/components/ShareModal';
 import { formatCurrency } from '@/lib/currency';
-import { Bot, CircleDollarSign, CloudSun, Map, Route, Trash2, Users } from 'lucide-react';
+import { CircleDollarSign, CloudSun, Map, Route, Trash2, Users } from 'lucide-react';
 
 const Dashboard = dynamic(() => import('@/components/Dashboard'), { ssr: false });
 const InteractiveMap = dynamic(() => import('@/components/InteractiveMap'), { ssr: false });
@@ -264,25 +264,18 @@ export default function TripDetailPage() {
                 {trip.title}
               </h2>
               
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 mb-8">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8 sm:[&>div]:min-w-0">
                 <div>
                   <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Destination</p>
                   <p className="text-white font-medium truncate" title={trip.destination}>{trip.destination}</p>
                 </div>
-                <div>
+                <div className="sm:justify-self-center sm:text-center">
                   <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Total Budget</p>
                   <p className="text-emerald-400 font-medium">{formatCurrency(trip.total_budget, trip.currency)}</p>
                 </div>
-                <div>
+                <div className="sm:justify-self-end sm:text-right">
                   <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Duration</p>
                   <p className="text-white font-medium">{new Set(items.map(i => i.day_number)).size} Days</p>
-                </div>
-                <div>
-                  <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Created By</p>
-                  <p className="text-indigo-400 font-medium flex items-center gap-1.5">
-                    <Bot className="w-4 h-4" />
-                    AI Generated
-                  </p>
                 </div>
               </div>
 

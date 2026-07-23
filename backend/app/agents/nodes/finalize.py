@@ -1,5 +1,6 @@
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.agents.state import AgentState
+from app.core.config import get_settings
 from app.services.trip_service import TripService
 from app.services.memory_service import save_memory
 from app.models.trip import TripCreate
@@ -20,14 +21,24 @@ def _parse_time(t: str | None) -> dt_time | None:
     if not t:
         return None
     try:
-        return dt_time.fromisoformat(t[:5])  # "HH:MM"
+        return dt_time.fromisoformat(str(t)[:5])  # "HH:MM"
     except (ValueError, TypeError):
         return None
+
+
+def _has_valid_coordinates(details: dict) -> bool:
+    try:
+        lat = float(details.get("lat"))
+        lng = float(details.get("lng"))
+    except (TypeError, ValueError):
+        return False
+    return -90 <= lat <= 90 and -180 <= lng <= 180 and not (lat == 0 and lng == 0)
 
 
 async def finalize_node(state: AgentState, session: AsyncSession) -> AgentState:
     """Persist trip + itinerary to DB, save memory, build final response."""
     intent = state.get("intent") or "ASK_INFO"
+    settings = get_settings()
     svc = TripService(session)
     user_id = state["user_id"]
 
@@ -60,38 +71,51 @@ async def finalize_node(state: AgentState, session: AsyncSession) -> AgentState:
 
         # --- Geocode addresses using Nominatim before saving ---
         items_to_save = state.get("itinerary_items") or []
-        if items_to_save:
+        if items_to_save and settings.ENABLE_GEOCODING:
             import asyncio
-            from geopy.geocoders import Nominatim
-            
-            # Init geolocator (must define custom user_agent)
-            geolocator = Nominatim(user_agent="datn_travel_planner_bot")
-            
-            for item in items_to_save:
-                if not item or item.get("type") in ("TRANSPORT", "OTHER"):
-                    continue
-                details = item.get("activity_details", {})
-                
-                # If LLM already gave coordinates, maybe trust them? Actually LLM hallucinates them.
-                # So we overwrite them based on the address or name.
-                search_query = details.get("address") or details.get("name")
-                if not search_query:
-                    continue
-                
-                try:
-                    # Run blocking geopy call in a thread
-                    location = await asyncio.to_thread(geolocator.geocode, search_query, timeout=5)
-                    if location:
-                        details["lat"] = location.latitude
-                        details["lng"] = location.longitude
-                        print(f"Geocoded: {search_query} -> {location.latitude}, {location.longitude}")
-                    else:
-                        print(f"Could not geocode: {search_query}")
-                except Exception as e:
-                    print(f"Geocoding error for {search_query}: {e}")
-                
-                # Sleep to respect Nominatim's strict 1 request/sec limit
-                await asyncio.sleep(1.1)
+            try:
+                from geopy.geocoders import Nominatim
+            except ImportError:
+                Nominatim = None
+                print("geopy is not installed; skipping itinerary geocoding.")
+
+            if Nominatim:
+                # Init geolocator (must define custom user_agent)
+                geolocator = Nominatim(user_agent="datn_travel_planner_bot")
+                geocoded_count = 0
+
+                for item in items_to_save:
+                    if not item or item.get("type") in ("TRANSPORT", "OTHER"):
+                        continue
+                    details = item.get("activity_details", {})
+                    if _has_valid_coordinates(details):
+                        continue
+                    if geocoded_count >= settings.GEOCODING_MAX_ITEMS:
+                        print(f"Geocoding limit reached ({settings.GEOCODING_MAX_ITEMS}); skipping remaining items.")
+                        break
+
+                    # LLM coordinates may be hallucinated, so overwrite them when geocoding works.
+                    search_query = details.get("address") or details.get("name")
+                    if not search_query:
+                        continue
+
+                    try:
+                        # Run blocking geopy call in a thread
+                        location = await asyncio.to_thread(geolocator.geocode, search_query, timeout=5)
+                        if location:
+                            details["lat"] = location.latitude
+                            details["lng"] = location.longitude
+                            print(f"Geocoded: {search_query} -> {location.latitude}, {location.longitude}")
+                        else:
+                            print(f"Could not geocode: {search_query}")
+                    except Exception as e:
+                        print(f"Geocoding error for {search_query}: {e}")
+                    geocoded_count += 1
+
+                    # Sleep to respect Nominatim's strict 1 request/sec limit
+                    await asyncio.sleep(1.1)
+        elif items_to_save:
+            print("Geocoding disabled; skipping synchronous itinerary geocoding.")
 
         # Save itinerary items for MODIFY_TRIP
         if saved_trip and intent == "MODIFY_TRIP":

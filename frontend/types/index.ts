@@ -44,6 +44,13 @@ export interface ActivityDetails {
   departure_time?: string;
   arrival_time?: string;
   price?: number;
+  price_per_adult?: number;
+  passengers?: number;
+  airline_code?: string;
+  duration?: string;
+  stops?: number;
+  cabin_class?: string;
+  deep_link?: string;
   stars?: number;
   rating?: number;
   total_price?: number;

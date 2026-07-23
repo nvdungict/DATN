@@ -8,6 +8,7 @@ from app.agents.state import AgentState
 from app.agents.nodes.search import search_node
 from app.agents.nodes.answer import answer_node
 from app.agents.nodes.finalize import finalize_node
+from app.agents.timing import timed_node
 
 
 def build_info_graph(session: AsyncSession) -> StateGraph:
@@ -16,9 +17,9 @@ def build_info_graph(session: AsyncSession) -> StateGraph:
 
     graph = StateGraph(AgentState)
 
-    graph.add_node("search", search_node)
-    graph.add_node("answer", answer_node)
-    graph.add_node("finalize", _finalize)
+    graph.add_node("search", timed_node("info.search", search_node))
+    graph.add_node("answer", timed_node("answer", answer_node))
+    graph.add_node("finalize", timed_node("info.finalize", _finalize))
 
     graph.set_entry_point("search")
 

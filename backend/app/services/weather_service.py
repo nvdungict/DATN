@@ -25,11 +25,14 @@ class WeatherAPIClient:
         trip: TripRead,
         itinerary_items: list[ItineraryItem],
     ) -> dict[str, Any]:
+        # Use the same destination-level query as planning. Averaging itinerary
+        # coordinates can make the Weather tab disagree with the forecast snapshot
+        # used when the itinerary was generated.
         return await self.get_weather_for_plan(
             destination=trip.destination,
             start_date=trip.start_date,
             end_date=trip.end_date,
-            itinerary_items=itinerary_items,
+            itinerary_items=[],
         )
 
     async def get_weather_for_plan(
@@ -56,10 +59,10 @@ class WeatherAPIClient:
 
         if trip_end < today:
             return self._date_unavailable_response(
-                trip.destination,
+                destination,
                 trip_start,
                 trip_end,
-                "Chuyến đi này đã qua, nên không còn dữ liệu dự báo thời tiết cho các ngày đó.",
+                "This trip is in the past, so forecast data is no longer available for those dates.",
             )
 
         forecast_limit = today + timedelta(days=13)
@@ -90,7 +93,7 @@ class WeatherAPIClient:
             destination,
             trip_start,
             trip_end,
-            "Ngày đi nằm quá xa phạm vi dự báo của WeatherAPI, hiện chưa thể lấy forecast chính xác.",
+            "The trip dates are beyond WeatherAPI's forecast range, so an accurate forecast is not available yet.",
         )
 
     async def _get_forecast_weather(
@@ -109,12 +112,12 @@ class WeatherAPIClient:
             "days": (forecast_end - today).days + 1,
             "aqi": "yes",
             "alerts": "yes",
-            "lang": "vi",
+            "lang": "en",
         }
 
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.get(self.forecast_url, params=params, timeout=12)
+                response = await client.get(self.forecast_url, params=params, timeout=10)
                 response.raise_for_status()
                 payload = response.json()
         except httpx.HTTPStatusError as exc:
@@ -160,9 +163,9 @@ class WeatherAPIClient:
                             "key": self.api_key,
                             "q": query,
                             "dt": target_date.isoformat(),
-                            "lang": "vi",
+                            "lang": "en",
                         },
-                        timeout=12,
+                        timeout=10,
                     )
                     response.raise_for_status()
                     payload = response.json()
@@ -178,7 +181,7 @@ class WeatherAPIClient:
                 fallback_location,
                 trip_start,
                 trip_end,
-                "WeatherAPI chưa trả được dự báo cho ngày đi này. Nếu dùng gói miễn phí, Future API có thể bị giới hạn.",
+                "WeatherAPI could not return a forecast for these trip dates. Future forecasts may be limited by the current WeatherAPI plan.",
             )
         except Exception as exc:
             logger.error("WeatherAPI future request exception: %s", exc)
@@ -341,12 +344,12 @@ class WeatherAPIClient:
         mode: str,
     ) -> str:
         if forecast_start == trip_start and forecast_end == trip_end:
-            return "Dự báo đang khớp với các ngày trong chuyến đi."
+            return "The forecast fully covers the trip dates."
 
         if mode == "forecast":
-            return "WeatherAPI chỉ có forecast ngắn hạn, nên hiện mới phủ được một phần ngày trong chuyến đi."
+            return "WeatherAPI only provides short-range forecasts here, so only part of the trip is currently covered."
 
-        return "Dự báo ngày xa được lấy qua Future API và có thể phụ thuộc gói WeatherAPI đang dùng."
+        return "Long-range forecast data was requested through the Future API and may depend on the active WeatherAPI plan."
 
     def _build_advice(self, weather: dict[str, Any]) -> list[str]:
         advice: list[str] = []
@@ -354,23 +357,23 @@ class WeatherAPIClient:
         current = weather.get("current", {})
 
         if weather.get("alerts"):
-            advice.append("Có cảnh báo thời tiết, nên kiểm tra lại các hoạt động ngoài trời trước khi xuất phát.")
+            advice.append("Weather alerts are active, so review outdoor activities before departure.")
 
-        if any((day.get("chance_of_rain") or 0) >= 60 for day in days):
-            advice.append("Khả năng mưa cao, nên chuẩn bị áo mưa và có phương án indoor dự phòng.")
+        if any((day.get("chance_of_rain") or 0) >= 75 for day in days):
+            advice.append("Rain risk is high, so prepare rain gear and keep indoor backup options.")
 
         if any((day.get("max_temp_c") or 0) >= 33 for day in days):
-            advice.append("Nhiệt độ cao, nên ưu tiên tham quan ngoài trời vào sáng sớm hoặc chiều muộn.")
+            advice.append("High temperatures are expected, so prioritize outdoor sightseeing in the early morning or late afternoon.")
 
         if any((day.get("uv") or 0) >= 7 for day in days):
-            advice.append("Chỉ số UV cao, nên mang kem chống nắng, mũ và nước uống.")
+            advice.append("UV levels are high, so bring sunscreen, a hat, and enough drinking water.")
 
         air_quality = current.get("air_quality") or {}
         if (air_quality.get("us_epa_index") or 0) >= 3:
-            advice.append("Chất lượng không khí không lý tưởng, nên hạn chế hoạt động ngoài trời kéo dài.")
+            advice.append("Air quality is not ideal, so limit prolonged outdoor activities.")
 
         if not advice:
-            advice.append("Thời tiết nhìn chung thuận lợi cho lịch trình hiện tại.")
+            advice.append("Weather conditions look generally suitable for the current itinerary.")
 
         return advice
 
@@ -403,5 +406,5 @@ class WeatherAPIClient:
             "requested_end_date": trip_end.isoformat(),
             "days": [],
             "alerts": [],
-            "advice": ["WeatherAPI hiện chưa phản hồi, bạn thử lại sau ít phút."],
+            "advice": ["WeatherAPI is not responding right now. Please try again in a few minutes."],
         }

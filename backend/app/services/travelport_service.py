@@ -7,17 +7,35 @@ from app.core.config import get_settings
 logger = logging.getLogger(__name__)
 
 class TravelportClient:
+    _cached_token: str | None = None
+    _token_expires_at: datetime | None = None
+    _auth_failed_until: datetime | None = None
+
     def __init__(self):
         self.settings = get_settings()
         self.sandbox = self.settings.TRAVELPORT_SANDBOX
-        self.base_url = "https://api.pp.travelport.com" if self.sandbox else "https://api.travelport.com"
-        self.oauth_url = "https://oauth.pp.travelport.com/oauth/oauth20/token" if self.sandbox else "https://oauth.travelport.com/oauth/oauth20/token"
+        self.base_url = (
+            self.settings.TRAVELPORT_API_BASE_URL
+            or ("https://api.pp.travelport.net" if self.sandbox else "https://api.travelport.net")
+        )
+        self.oauth_url = (
+            self.settings.TRAVELPORT_AUTH_URL
+            or ("https://auth.pp.travelport.net/oauth/token" if self.sandbox else "https://auth.travelport.net/oauth/token")
+        )
         self.token = None
 
     async def get_token(self) -> str:
         """Fetch OAuth 2.0 Access Token from Travelport OAuth server."""
         if not self.settings.TRAVELPORT_CLIENT_ID or not self.settings.TRAVELPORT_CLIENT_SECRET:
             logger.info("Travelport credentials not fully set. Using simulator mode.")
+            return None
+
+        now = datetime.utcnow()
+        if self.__class__._cached_token and self.__class__._token_expires_at and now < self.__class__._token_expires_at:
+            return self.__class__._cached_token
+
+        if self.__class__._auth_failed_until and now < self.__class__._auth_failed_until:
+            logger.info("Travelport auth recently failed. Using simulator mode until credentials are refreshed.")
             return None
         
         credentials = f"{self.settings.TRAVELPORT_CLIENT_ID}:{self.settings.TRAVELPORT_CLIENT_SECRET}"
@@ -33,14 +51,20 @@ class TravelportClient:
         
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.post(self.oauth_url, headers=headers, data=data, timeout=10)
+                response = await client.post(self.oauth_url, headers=headers, data=data, timeout=8)
                 if response.status_code == 200:
                     token_data = response.json()
                     self.token = token_data.get("access_token")
+                    expires_in = int(token_data.get("expires_in") or 900)
+                    self.__class__._cached_token = self.token
+                    self.__class__._token_expires_at = now + timedelta(seconds=max(expires_in - 60, 60))
+                    self.__class__._auth_failed_until = None
                     logger.info("Travelport API token retrieved successfully.")
                     return self.token
                 else:
                     logger.error(f"Travelport Token Error: {response.status_code} - {response.text}")
+                    if response.status_code in (400, 401, 403):
+                        self.__class__._auth_failed_until = now + timedelta(minutes=10)
         except Exception as e:
             logger.error(f"Failed to connect to Travelport OAuth server: {e}")
         return None
@@ -88,7 +112,7 @@ class TravelportClient:
                 # Typical Travelport Flights Search endpoint
                 endpoint = f"{self.base_url}/11/air/search/flightoffers"
                 async with httpx.AsyncClient() as client:
-                    response = await client.post(endpoint, headers=headers, json=payload, timeout=15)
+                    response = await client.post(endpoint, headers=headers, json=payload, timeout=12)
                     if response.status_code == 200:
                         data = response.json()
                         # Extract and parse Travelport offers
@@ -183,7 +207,7 @@ class TravelportClient:
                 # Stays API endpoint
                 endpoint = f"{self.base_url}/search/searchcomplete"
                 async with httpx.AsyncClient() as client:
-                    response = await client.post(endpoint, headers=headers, json=payload, timeout=15)
+                    response = await client.post(endpoint, headers=headers, json=payload, timeout=12)
                     if response.status_code == 200:
                         data = response.json()
                         hotels = data.get("HotelProperty", [])

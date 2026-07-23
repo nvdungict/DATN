@@ -10,6 +10,7 @@ Intents:
     SEARCH_FLIGHT / SEARCH_HOTEL → Booking Agent (subgraph)
 """
 import functools
+import time
 from typing import AsyncGenerator
 
 from langgraph.graph import StateGraph, END
@@ -21,6 +22,7 @@ from app.agents.subgraphs.supervisor import supervisor_node, route_after_supervi
 from app.agents.subgraphs.planning import build_planning_graph
 from app.agents.subgraphs.info import build_info_graph
 from app.agents.subgraphs.booking import build_booking_graph
+from app.agents.timing import timed_node
 
 
 # ---------------------------------------------------------------------------
@@ -35,8 +37,8 @@ def build_graph(session: AsyncSession) -> StateGraph:
 
     graph = StateGraph(AgentState)
 
-    graph.add_node("understand", understand_node)
-    graph.add_node("supervisor", supervisor_node)
+    graph.add_node("understand", timed_node("understand", understand_node))
+    graph.add_node("supervisor", timed_node("supervisor", supervisor_node))
     graph.add_node("planning", planning)
     graph.add_node("info", info)
     graph.add_node("booking", booking)
@@ -68,11 +70,13 @@ async def run_agent(
     trip_id: int | None = None,
 ) -> dict:
     """Run the agent graph and return the final state."""
+    start = time.perf_counter()
     graph = build_graph(session)
     compiled = graph.compile()
 
     initial_state: AgentState = _make_initial_state(user_message, user_id, trip_id)
     final_state = await compiled.ainvoke(initial_state)
+    print(f"[agent timing] run_agent_total: {time.perf_counter() - start:.2f}s")
 
     return {
         "action": final_state.get("intent") or "ASK_INFO",
@@ -91,6 +95,7 @@ async def run_agent_streaming(
     trip_id: int | None = None,
 ) -> AsyncGenerator[dict, None]:
     """Stream agent execution chunks for WebSocket real-time output."""
+    start = time.perf_counter()
     graph = build_graph(session)
     compiled = graph.compile()
 
@@ -128,6 +133,7 @@ async def run_agent_streaming(
                     }
             elif node_name in FINALIZE_NODES:
                 messages = node_output.get("messages") or []
+                print(f"[agent timing] run_agent_streaming_total: {time.perf_counter() - start:.2f}s")
                 yield {
                     "type": "final",
                     "content": messages[0]["content"] if messages else "Done!",

@@ -47,26 +47,26 @@ export default function ShareModal({ tripId, onClose }: { tripId: number, onClos
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-md overflow-hidden">
-        <div className="p-6 border-b border-white/10 flex justify-between items-center">
-          <h2 className="text-xl font-bold text-white">Share Trip</h2>
-          <button onClick={onClose} className="text-white/50 hover:text-white">&times;</button>
+      <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-4xl min-h-[520px] overflow-hidden shadow-2xl">
+        <div className="px-10 py-8 border-b border-white/10 flex justify-between items-center">
+          <h2 className="text-3xl font-bold text-white">Share Trip</h2>
+          <button onClick={onClose} className="text-3xl leading-none text-white/50 hover:text-white">&times;</button>
         </div>
         
-        <div className="p-6 space-y-6">
-          <form onSubmit={handleInvite} className="flex gap-2">
+        <div className="px-10 py-9 space-y-10">
+          <form onSubmit={handleInvite} className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_220px_140px]">
             <input 
               type="email" 
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="friend@email.com" 
               required
-              className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white outline-none focus:border-violet-500 transition-colors"
+              className="min-h-16 bg-white/5 border border-white/10 rounded-xl px-6 text-xl text-white outline-none focus:border-violet-500 transition-colors"
             />
             <select 
               value={role}
               onChange={(e) => setRole(e.target.value)}
-              className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white outline-none"
+              className="min-h-16 bg-white/5 border border-white/10 rounded-xl px-5 text-xl text-white outline-none"
             >
               <option value="VIEWER">Can View</option>
               <option value="EDITOR">Can Edit</option>
@@ -74,24 +74,24 @@ export default function ShareModal({ tripId, onClose }: { tripId: number, onClos
             <button 
               type="submit" 
               disabled={loading}
-              className="bg-violet-600 hover:bg-violet-500 text-white px-4 py-2 rounded-xl font-medium transition-colors"
+              className="min-h-16 bg-violet-600 hover:bg-violet-500 disabled:opacity-60 text-white px-6 rounded-xl text-xl font-semibold transition-colors"
             >
               Invite
             </button>
           </form>
 
-          <div className="space-y-4">
-            <h3 className="text-sm font-medium text-white/50 uppercase tracking-wider">Collaborators</h3>
+          <div className="space-y-5">
+            <h3 className="text-lg font-semibold text-white/50 uppercase tracking-wider">Collaborators</h3>
             {collabs.length === 0 ? (
-              <p className="text-white/50 text-sm">No one has been invited yet.</p>
+              <p className="text-white/50 text-xl">No one has been invited yet.</p>
             ) : (
               collabs.map(c => (
-                <div key={c.id} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5">
+                <div key={c.id} className="flex items-center justify-between p-5 rounded-xl bg-white/5 border border-white/5">
                   <div>
-                    <p className="text-white font-medium">{c.email}</p>
-                    <p className="text-xs text-white/50 capitalize">{c.role.toLowerCase()} • {c.status}</p>
+                    <p className="text-xl text-white font-medium">{c.email}</p>
+                    <p className="text-sm text-white/50 capitalize">{c.role.toLowerCase()} • {c.status}</p>
                   </div>
-                  <button onClick={() => handleRemove(c.user_id)} className="text-rose-400 hover:text-rose-300 text-sm font-medium">Remove</button>
+                  <button onClick={() => handleRemove(c.user_id)} className="text-rose-400 hover:text-rose-300 text-base font-medium">Remove</button>
                 </div>
               ))
             )}

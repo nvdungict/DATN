@@ -71,6 +71,26 @@ async def understand_node(state: AgentState) -> AgentState:
     state["intent"] = parsed.get("intent") or "CREATE_TRIP"
     state["entities"] = parsed.get("entities") or {}
 
+    message_text = state["user_message"].lower()
+    has_trip_context = state.get("trip_id") is not None
+    modification_markers = (
+        "change", "update", "modify", "replace", "add", "remove", "switch",
+        "should have", "we should", "i think we should", "instead",
+        "thay", "đổi", "doi", "sửa", "sua", "thêm", "them", "xóa", "xoa",
+        "bỏ", "bo", "nên", "nen",
+    )
+    schedule_markers = (
+        "day", "last day", "before", "flight", "plane", "dinner", "lunch", "breakfast",
+        "ngày", "ngay", "cuối", "cuoi", "trước", "truoc", "bay", "bữa", "bua",
+    )
+    if (
+        has_trip_context
+        and state["intent"] in ("ASK_INFO", "CREATE_TRIP")
+        and any(marker in message_text for marker in modification_markers)
+        and any(marker in message_text for marker in schedule_markers)
+    ):
+        state["intent"] = "MODIFY_TRIP"
+
     # Ensure num_days has a default
     if not state["entities"].get("num_days"):
         state["entities"]["num_days"] = 3
@@ -92,4 +112,3 @@ async def understand_node(state: AgentState) -> AgentState:
         state["booking_params"] = {}
 
     return state
-

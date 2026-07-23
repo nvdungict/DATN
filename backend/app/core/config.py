@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     # WeatherAPI.com
     WEATHERAPI_KEY: str = ""
 
+    # Geocoding
+    ENABLE_GEOCODING: bool = False
+    GEOCODING_MAX_ITEMS: int = 8
+
     # Email (SMTP)
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
@@ -46,10 +50,12 @@ class Settings(BaseSettings):
     TRAVELPORT_ACCESS_GROUP: str = ""
     TRAVELPORT_CURRENCY: str = "HKD"
     TRAVELPORT_SANDBOX: bool = True
+    TRAVELPORT_AUTH_URL: str = ""
+    TRAVELPORT_API_BASE_URL: str = ""
 
-    # RapidAPI Booking.com
+    # RapidAPI Agoda
     RAPIDAPI_KEY: str = ""
-    RAPIDAPI_HOST: str = "booking-com15.p.rapidapi.com"
+    RAPIDAPI_HOST: str = "agoda-com.p.rapidapi.com"
 
     # VNPay
     VNPAY_TMN_CODE: str = ""

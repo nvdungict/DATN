@@ -9,7 +9,7 @@ from app.routes import auth, trips, itinerary, ai_chat, notifications, booking, 
 settings = get_settings()
 
 
-@asynccontextmanager
+@asynccontextmanager                                    
 async def lifespan(app: FastAPI):
     await create_db_and_tables()
     from app.services.scheduler import start_scheduler
@@ -21,7 +21,7 @@ app = FastAPI(
     title=settings.APP_NAME,
     version="1.0.0",
     description="AI-powered travel assistant with stateful trip planning",
-    lifespan=lifespan,
+    lifespan=lifespan,  
 )
 
 # CORS – allow all origins in development so browser preflight (OPTIONS) passes

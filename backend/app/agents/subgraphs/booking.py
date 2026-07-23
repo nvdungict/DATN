@@ -8,6 +8,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
 
 from app.agents.state import AgentState
+from app.agents.timing import timed_node
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -187,8 +188,8 @@ def build_booking_graph() -> StateGraph:
     """Build the Booking Agent subgraph."""
     graph = StateGraph(AgentState)
 
-    graph.add_node("booking_search", booking_search_node)
-    graph.add_node("booking_finalize", booking_finalize_node)
+    graph.add_node("booking_search", timed_node("booking_search", booking_search_node))
+    graph.add_node("booking_finalize", timed_node("booking_finalize", booking_finalize_node))
 
     graph.set_entry_point("booking_search")
     graph.add_edge("booking_search", "booking_finalize")
